@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Zander Brown <zbrown@gnome.org>
 Build-Depends:
  appstream-util,
- debhelper (>= 11),
+ debhelper-compat (= 12),
  desktop-file-utils,
  libgtk-3-dev (>= 3.24.0),
  libhandy-0.0-dev (>= 0.0.9),
