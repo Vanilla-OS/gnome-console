@@ -21,7 +21,7 @@ Build-Depends:
  at-spi2-core,
  xvfb,
  xauth,
-Standards-Version: 4.2.1
+Standards-Version: 4.5.0
 Homepage: https://gitlab.gnome.org/ZanderBrown/kgx
 
 Package: kgx
