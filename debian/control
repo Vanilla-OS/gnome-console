@@ -25,6 +25,7 @@ Standards-Version: 4.5.0
 Homepage: https://gitlab.gnome.org/ZanderBrown/kgx
 Vcs-Browser: https://salsa.debian.org/awai-guest/kgx
 Vcs-Git: https://salsa.debian.org/awai-guest/kgx.git
+Rules-Requires-Root: no
 
 Package: kgx
 Architecture: any
