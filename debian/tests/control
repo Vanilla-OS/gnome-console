@@ -1,0 +1,3 @@
+Test-Command: /usr/bin/kgx --version
+Restrictions: superficial
+Depends: kgx
