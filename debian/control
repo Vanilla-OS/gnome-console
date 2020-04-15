@@ -1,7 +1,7 @@
 Source: kgx
 Section: gnome
 Priority: optional
-Maintainer: Zander Brown <zbrown@gnome.org>
+Maintainer: Arnaud Ferraris <arnaud.ferraris@gmail.com>
 Build-Depends:
  appstream-util,
  debhelper-compat (= 12),
@@ -23,6 +23,8 @@ Build-Depends:
  xauth,
 Standards-Version: 4.5.0
 Homepage: https://gitlab.gnome.org/ZanderBrown/kgx
+Vcs-Browser: https://salsa.debian.org/awai-guest/kgx
+Vcs-Git: https://salsa.debian.org/awai-guest/kgx.git
 
 Package: kgx
 Architecture: any
