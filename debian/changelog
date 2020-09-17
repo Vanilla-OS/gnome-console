@@ -1,9 +1,14 @@
-kgx (0.2.1-2) UNRELEASED; urgency=low
+kgx (0.2.1-2) unstable; urgency=medium
 
+  [ Federico Ceratto ]
   * Set upstream metadata fields: Bug-Database, Bug-Submit, Repository,
     Repository-Browse.
 
- -- Federico Ceratto <federico@debian.org>  Sun, 07 Jun 2020 22:10:12 -0000
+  [ Arnaud Ferraris ]
+  * d/copyright: add missing copyright entries for icons
+  * d/control: change maintainer to DebianOnMobile team
+
+ -- Arnaud Ferraris <arnaud.ferraris@gmail.com>  Thu, 17 Sep 2020 15:23:29 +0200
 
 kgx (0.2.1-1) unstable; urgency=medium
 
