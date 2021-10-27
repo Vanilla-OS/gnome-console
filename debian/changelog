@@ -1,3 +1,15 @@
+kgx (0.4.0-1) unstable; urgency=medium
+
+  * d/gbp.conf: remove the 'v' from debian tag
+  * New upstream version 0.4.0
+  * d/control: fix Vcs-* URLs and update build dependencies (Closes: #993853)
+  * d/rules: enable tests by default
+  * d/copyright: update for new release and reformat
+  * d/patches: remove deprecated patches
+  * d/patches: don't set custom RPATH for private library
+
+ -- Arnaud Ferraris <arnaud.ferraris@collabora.com>  Mon, 08 Nov 2021 13:02:24 +0100
+
 kgx (0.2.1-2) unstable; urgency=medium
 
   [ Federico Ceratto ]
