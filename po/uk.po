@@ -1,0 +1,373 @@
+# Ukrainian translation for kgx.
+# Copyright (C) 2020 kgx's COPYRIGHT HOLDER
+# This file is distributed under the same license as the kgx package.
+#
+# Yuri Chornoivan <yurchor@ukr.net>, 2020, 2021.
+msgid ""
+msgstr ""
+"Project-Id-Version: kgx master\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/ZanderBrown/kgx/issues\n"
+"POT-Creation-Date: 2021-10-04 23:53+0000\n"
+"PO-Revision-Date: 2021-10-06 15:05+0300\n"
+"Last-Translator: Yuri Chornoivan <yurchor@ukr.net>\n"
+"Language-Team: Ukrainian <trans-uk@lists.fedoraproject.org>\n"
+"Language: uk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=n==1 ? 3 : n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Lokalize 20.12.0\n"
+
+#. Translators: This is a train station, see README.md for more info
+#: data/org.gnome.zbrown.KingsCross.desktop.in.in:4
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:8
+#: src/kgx-application.c:512 src/kgx-application.h:46 src/kgx-window.ui:104
+msgid "King’s Cross"
+msgstr "Кінгс-кросс"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/org.gnome.zbrown.KingsCross.desktop.in.in:9
+#: data/org.gnome.zbrown.KingsCross-generic.desktop.in.in:8
+msgid "command;prompt;cmd;commandline;run;shell;terminal;kgx;kings cross;"
+msgstr ""
+"command;prompt;cmd;commandline;run;shell;terminal;kgx;kings cross;команда;"
+"запит;командний рядок;запустити;запуск;оболонка;термінал;кінгс-кросс;"
+
+#: data/org.gnome.zbrown.KingsCross.desktop.in.in:22
+#: data/org.gnome.zbrown.KingsCross-generic.desktop.in.in:21
+msgid "New Window"
+msgstr "Нове вікно"
+
+#: data/org.gnome.zbrown.KingsCross.desktop.in.in:28
+#: data/org.gnome.zbrown.KingsCross-generic.desktop.in.in:27
+#: src/kgx-window.ui:157
+msgid "New Tab"
+msgstr "Нова вкладка"
+
+#: data/org.gnome.zbrown.KingsCross-generic.desktop.in.in:3
+#: src/kgx-application.h:44
+msgid "Terminal"
+msgstr "Термінал"
+
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:9
+#: src/kgx-application.c:514 src/kgx-window.c:530
+msgid "Terminal Emulator"
+msgstr "Емулятор термінала"
+
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:11
+msgid "A simple user-friendly terminal emulator for the GNOME desktop."
+msgstr "Простий зручний для користувачів термінал для стільниці GNOME."
+
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:30
+msgid "Terminal window"
+msgstr "Вікно термінала"
+
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:60
+msgid "Zander Brown"
+msgstr "Zander Brown"
+
+#: src/help-overlay.ui:13
+msgctxt "shortcut window"
+msgid "Application"
+msgstr "Програма"
+
+#: src/help-overlay.ui:19
+msgctxt "shortcut window"
+msgid "New Window"
+msgstr "Нове вікно"
+
+#: src/help-overlay.ui:26
+msgctxt "shortcut window"
+msgid "Terminal"
+msgstr "Термінал"
+
+#: src/help-overlay.ui:32
+msgctxt "shortcut window"
+msgid "Find"
+msgstr "Знайти"
+
+#: src/help-overlay.ui:39
+msgctxt "shortcut window"
+msgid "Copy"
+msgstr "Копіювати"
+
+#: src/help-overlay.ui:46
+msgctxt "shortcut window"
+msgid "Paste"
+msgstr "Вставити"
+
+#: src/help-overlay.ui:53
+msgctxt "shortcut window"
+msgid "Tabs"
+msgstr "Вкладки"
+
+#: src/help-overlay.ui:59
+msgctxt "shortcut window"
+msgid "New Tab"
+msgstr "Нова вкладка"
+
+#: src/help-overlay.ui:66
+msgctxt "shortcut window"
+msgid "Close Tab"
+msgstr "Закрити вкладку"
+
+#: src/help-overlay.ui:73
+msgctxt "shortcut window"
+msgid "Next Tab"
+msgstr "Наступна вкладка"
+
+#: src/help-overlay.ui:80
+msgctxt "shortcut window"
+msgid "Previous Tab"
+msgstr "Попередня вкладка"
+
+#: src/help-overlay.ui:87
+msgctxt "shortcut window"
+msgid "Switch to Tab"
+msgstr "Перемкнутися на вкладку"
+
+#. Translators: The leading # is intentional, the initial %s is the
+#. version of KGX itself, the latter format is the VTE version
+#: src/kgx-application.c:486
+#, c-format
+msgid "# KGX %s using VTE %u.%u.%u %s\n"
+msgstr "# KGX %s з використанням VTE %u.%u.%u %s\n"
+
+#. Translators: %s is the year range
+#: src/kgx-application.c:498 src/kgx-window.c:518
+#, c-format
+msgid "© %s Zander Brown"
+msgstr "© Zander Brown, %s"
+
+#: src/kgx-application.c:516
+msgid "GPL 3.0 or later"
+msgstr "GPL 3.0 або новіша"
+
+#: src/kgx-application.c:647
+msgid "Execute the argument to this option inside the terminal"
+msgstr "Виконати аргумент цього параметра у терміналі"
+
+#: src/kgx-application.c:656
+msgid "Set the working directory"
+msgstr "Встановити робочий каталог"
+
+#. Translators: Placeholder of for a given directory
+#: src/kgx-application.c:658
+msgid "DIRNAME"
+msgstr "НАЗВА_КАТАЛОГУ"
+
+#: src/kgx-application.c:666
+msgid "Wait until the child exits (TODO)"
+msgstr "Очікувати на завершення дочірнього процесу (ЩЕ НЕ РЕАЛІЗОВАНО)"
+
+#: src/kgx-application.c:675
+msgid "Set the initial window title"
+msgstr "Встановити початковий заголовок вікна"
+
+#: src/kgx-application.c:684
+msgid "ADVANCED: Set the shell to launch"
+msgstr "ДЛЯ ДОСВІДЧЕНИХ: встановити командну оболонку для запуску"
+
+#: src/kgx-application.c:693
+msgid "ADVANCED: Set the scrollback length"
+msgstr "ДЛЯ ДОСВІДЧЕНИХ: встановити довжину буфера гортання"
+
+#: src/kgx-close-dialog.c:52
+msgid "Close Window?"
+msgstr "Закрити вікно?"
+
+#: src/kgx-close-dialog.c:53
+msgid ""
+"Some commands are still running, closing this window will kill them and may "
+"lead to unexpected outcomes"
+msgstr ""
+"Виконання якихось із команд ще не завершено. Закриття цього вікна призведе "
+"до аварійного завершення роботи цих команд і може мати непередбачувані "
+"наслідки."
+
+#: src/kgx-close-dialog.c:58
+msgid "Close Tab?"
+msgstr "Закрити вкладку?"
+
+#: src/kgx-close-dialog.c:59
+msgid ""
+"Some commands are still running, closing this tab will kill them and may "
+"lead to unexpected outcomes"
+msgstr ""
+"Виконання якихось із команд ще не завершено. Закриття цієї вкладки призведе "
+"до аварійного завершення роботи цих команд і може мати непередбачувані "
+"наслідки."
+
+#: src/kgx-close-dialog.ui:24 src/kgx-terminal.c:675
+msgid "_Cancel"
+msgstr "_Скасувати"
+
+#: src/kgx-close-dialog.ui:32
+msgid "C_lose"
+msgstr "_Закрити"
+
+#: src/kgx-pages.ui:47
+msgid "_Detach Tab"
+msgstr "_Від'єднати вкладку"
+
+#: src/kgx-pages.ui:53
+msgid "_Close"
+msgstr "_Закрити"
+
+#. translators: <b> </b> marks the text as bold, ensure they are
+#. matched please!
+#: src/kgx-simple-tab.c:119
+#, c-format
+msgid "<b>Read Only</b> — Command exited with code %i"
+msgstr "<b>Лише читання</b> — виконання команди завершено із кодом %i"
+
+#. translators: <b> </b> marks the text as bold, ensure they are
+#. matched please!
+#: src/kgx-simple-tab.c:128
+msgid "<b>Read Only</b> — Command exited"
+msgstr "<b>Лише читання</b> — виконання команди завершено"
+
+#. translators: <b> </b> marks the text as bold, ensure they are
+#. matched please!
+#: src/kgx-simple-tab.c:160
+#, c-format
+msgid "<b>Failed to start</b> — %s"
+msgstr "<b>Не вдалося запустити</b> – %s"
+
+#: src/kgx-tab.c:1182
+msgid "Command completed"
+msgstr "Виконання команди завершено"
+
+#: src/kgx-tab-button.ui:5
+msgid "View open tabs"
+msgstr ""
+"Переглянути відкриті вкладки"
+
+#: src/kgx-terminal.c:667
+msgid "You are pasting a command that runs as an administrator"
+msgstr "Ви вставили команду, яку слід запускати від імені адміністратора"
+
+#. TRANSLATORS: %s is the command being pasted
+#: src/kgx-terminal.c:670
+#, c-format
+msgid ""
+"Make sure you know what the command does:\n"
+"%s"
+msgstr ""
+"Переконайтеся у тому, що вам відомі наслідки виконання команди:\n"
+"%s"
+
+#: src/kgx-terminal.c:678 src/menus.ui:24
+msgid "_Paste"
+msgstr "Вст_авити"
+
+#. Translators: Credit yourself here
+#: src/kgx-window.c:524
+msgid "translator-credits"
+msgstr "Юрій Чорноіван <yurchor@ukr.net>"
+
+#. Translators: Don’t attempt to translate KGX,
+#. * treat it as a proper noun
+#: src/kgx-window.c:528
+msgid "KGX Terminal Emulator"
+msgstr "Емулятор термінала KGX"
+
+#: src/kgx-window.c:638
+msgid "_About Terminal"
+msgstr "_Про «Термінал»"
+
+#: src/kgx-window.ui:20
+msgid "Shrink text"
+msgstr "Стиснути текст"
+
+#: src/kgx-window.ui:33
+msgid "Reset size"
+msgstr "Відновити початковий розмір"
+
+#: src/kgx-window.ui:46
+msgid "Enlarge text"
+msgstr "Збільшити текст"
+
+#: src/kgx-window.ui:63
+msgid "_New Window"
+msgstr "_Нове вікно"
+
+#: src/kgx-window.ui:75
+msgid "_Keyboard Shortcuts"
+msgstr "_Клавіатурні скорочення"
+
+#: src/kgx-window.ui:82
+msgid "_About King’s Cross"
+msgstr "_Про «Кінгс-кросс»"
+
+#: src/kgx-window.ui:83
+msgid "About this program"
+msgstr "Про цю програму"
+
+#: src/kgx-window.ui:112
+msgid "Find in terminal"
+msgstr "Знайти у терміналі"
+
+#: src/kgx-window.ui:130
+msgid "Menu"
+msgstr "Меню"
+
+#: src/menus.ui:7
+msgid "_Open Link"
+msgstr "_Відкрити посилання"
+
+#: src/menus.ui:12
+msgid "Copy _Link"
+msgstr "Копіювати _посилання"
+
+#: src/menus.ui:19
+msgid "_Copy"
+msgstr "_Копіювати"
+
+#: src/menus.ui:29
+msgid "_Select All"
+msgstr "Ви_брати все"
+
+#: src/menus.ui:36
+msgid "Show in _Files"
+msgstr "Показати у «_Файлах»"
+
+#: nautilus/kgx-nautilus-menu-item.c:120
+msgid "Open in T_erminal"
+msgstr "Відкрити у _Терміналі"
+
+#: nautilus/kgx-nautilus-menu-item.c:122
+msgid "Op_en in King’s Cross"
+msgstr "Від_крити у «Кінгс-кросс»"
+
+#: nautilus/kgx-nautilus-menu-item.c:124
+msgid "Start a terminal session for this location"
+msgstr "Розпочати сеанс термінала для цієї адреси"
+
+#~ msgctxt "shortcut window"
+#~ msgid "First Tab"
+#~ msgstr "Перша вкладка"
+
+#~ msgctxt "shortcut window"
+#~ msgid "Last Tab"
+#~ msgstr "Остання вкладка"
+
+#~ msgid "Close Terminal"
+#~ msgstr "Закрити «Термінал»"
+
+#~ msgid "_OK"
+#~ msgstr "_Гаразд"
+
+#~ msgid "Terminal (King’s Cross)"
+#~ msgstr "Термінал (Кінгс-кросс)"
+
+#~ msgid "command;prompt;cmd;commandline;run;shell;terminal;kgx;"
+#~ msgstr ""
+#~ "command;prompt;cmd;commandline;run;shell;terminal;kgx;kings cross;команда;"
+#~ "запит;командний рядок;запустити;запуск;оболонка;термінал;"
+
+#~ msgid "child watcher"
+#~ msgstr "дитячний наглядач"
+
+#~ msgid "Copyright © %s Zander Brown"
+#~ msgstr "© Zander Brown, %s"

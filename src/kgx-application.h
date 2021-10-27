@@ -23,6 +23,7 @@
 #include "kgx-process.h"
 #include "kgx-window.h"
 #include "kgx-terminal.h"
+#include "kgx-tab.h"
 
 G_BEGIN_DECLS
 
@@ -39,17 +40,24 @@ G_BEGIN_DECLS
  */
 #define MONOSPACE_FONT_KEY_NAME "monospace-font-name"
 
+#if IS_GENERIC
+#define KGX_DISPLAY_NAME _("Terminal")
+#else
+#define KGX_DISPLAY_NAME _("King’s Cross")
+#endif
+
+
 #define KGX_TYPE_APPLICATION (kgx_application_get_type())
 
 /**
  * ProcessWatch:
- * @window: the window the #KgxProcess is in
+ * @page: the #KgxTab the #KgxProcess is in
  * @process: what we are watching
- * 
+ *
  * Stability: Private
  */
 struct ProcessWatch {
-  KgxWindow  *window;
+  KgxTab     *page;
   KgxProcess *process;
 };
 
@@ -60,10 +68,11 @@ struct ProcessWatch {
  * @desktop_interface: the #GSettings storing the system monospace font
  * @watching: ~ (element-type GLib.Pid ProcessWatch) the shells running in windows
  * @children: ~ (element-type GLib.Pid ProcessWatch) the processes running in shells
+ * @pages: ~ (element-type uint Kgx.Page) the global page id / page map
  * @active: counter of #KgxWindow's with #GtkWindow:is-active = %TRUE,
  *          obviously this should only ever be 1 or but we can't be certain
  * @timeout: the current #GSource id of the watcher
- * 
+ *
  * Stability: Private
  */
 struct _KgxApplication
@@ -73,13 +82,15 @@ struct _KgxApplication
 
   /*< public >*/
   KgxTheme                  theme;
-  gdouble                   scale;
+  double                    scale;
+  gint64                    scrollback_lines;
 
-  
+  GSettings                *settings;
   GSettings                *desktop_interface;
 
   GTree                    *watching;
   GTree                    *children;
+  GTree                    *pages;
 
   guint                     timeout;
   int                       active;
@@ -87,15 +98,24 @@ struct _KgxApplication
 
 G_DECLARE_FINAL_TYPE (KgxApplication, kgx_application, KGX, APPLICATION, GtkApplication)
 
-#if HAS_GTOP
+
 void                  kgx_application_add_watch       (KgxApplication *self,
                                                        GPid            pid,
-                                                       KgxWindow      *window);
+                                                       KgxTab         *page);
 void                  kgx_application_remove_watch    (KgxApplication *self,
                                                        GPid            pid);
-#endif
 PangoFontDescription *kgx_application_get_font        (KgxApplication *self);
 void                  kgx_application_push_active     (KgxApplication *self);
 void                  kgx_application_pop_active      (KgxApplication *self);
+void                  kgx_application_add_page        (KgxApplication *self,
+                                                       KgxTab         *page);
+KgxTab               *kgx_application_lookup_page     (KgxApplication *self,
+                                                       guint           id);
+KgxTab *              kgx_application_add_terminal    (KgxApplication *self,
+                                                       KgxWindow      *existing_window,
+                                                       guint32         timestamp,
+                                                       GFile          *working_directory,
+                                                       const char     *command,
+                                                       const char     *title);
 
 G_END_DECLS

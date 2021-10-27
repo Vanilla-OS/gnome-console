@@ -1,23 +1,8 @@
 
-option('gtop',
-       type: 'boolean',
-       value: true,
-       description: 'Use libgtop to track children, you probably DO want this')
-
 option('gtk_doc',
        type: 'boolean',
        value: false,
        description: 'Whether to generate the API reference, you probably don\'t want this')
-
-option('gir',
-       type: 'boolean',
-       value: false,
-       description: 'Whether to generate GIR, you probably don\'t want this')
-
-option('vapi',
-       type: 'boolean',
-       value: false,
-       description: 'Whether to generate VAPI, you probably don\'t want this')
 
 option('generic',
        type: 'boolean',
@@ -28,3 +13,13 @@ option('tests',
        type: 'boolean',
        value: false,
        description: 'Enable tests')
+
+option('sassc',
+       type: 'feature',
+       value: 'auto',
+       description: 'Rebuild styles using sassc')
+
+option('nautilus',
+       type: 'feature',
+       value: 'auto',
+       description: 'Nautilus plug-in')

@@ -20,10 +20,10 @@
  * SECTION:kgx-close-dialog
  * @title: KgxCloseDialog
  * @short_description: Confirmation dialog to close a terminal with children
- * 
+ *
  * The "are you sure?" dialog when a terminal is closed whilst commands are
  * still running within it
- * 
+ *
  * Since: 0.2.0
  */
 
@@ -31,75 +31,50 @@
 
 #include "kgx-config.h"
 #include "kgx-close-dialog.h"
-#include "kgx-close-dialog-row.h"
+#include "kgx-process.h"
+#include <handy.h>
 
-G_DEFINE_TYPE (KgxCloseDialog, kgx_close_dialog, HDY_TYPE_DIALOG)
-
-static void
-kgx_close_dialog_class_init (KgxCloseDialogClass *klass)
+GtkWidget *
+kgx_close_dialog_new (KgxCloseDialogContext  context,
+                      GPtrArray             *commands)
 {
-  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+  g_autoptr (GtkBuilder) builder = NULL;
+  GtkWidget *dialog, *list;
 
-  gtk_widget_class_set_template_from_resource (widget_class,
-                                               RES_PATH "kgx-close-dialog.ui");
+  builder = gtk_builder_new_from_resource (KGX_APPLICATION_PATH "kgx-close-dialog.ui");
 
-  gtk_widget_class_bind_template_child (widget_class, KgxCloseDialog, list);
-}
+  dialog = GTK_WIDGET (gtk_builder_get_object (builder, "dialog"));
+  list = GTK_WIDGET (gtk_builder_get_object (builder, "list"));
 
-static void
-separator_header (GtkListBoxRow *row,
-                  GtkListBoxRow *before,
-                  gpointer       data)
-{
-  GtkWidget *header;
-
-  g_return_if_fail (GTK_IS_LIST_BOX_ROW (row));
-
-  if (before == NULL) {
-    gtk_list_box_row_set_header (row, NULL);
-
-    return;
-  } else if (gtk_list_box_row_get_header (row) != NULL) {
-    return;
+  switch (context) {
+    case KGX_CONTEXT_WINDOW:
+      g_object_set (dialog,
+                    "text", _("Close Window?"),
+                    "secondary-text", _("Some commands are still running, closing this window will kill them and may lead to unexpected outcomes"),
+                    NULL);
+      break;
+    case KGX_CONTEXT_TAB:
+      g_object_set (dialog,
+                    "text", _("Close Tab?"),
+                    "secondary-text", _("Some commands are still running, closing this tab will kill them and may lead to unexpected outcomes"),
+                    NULL);
+      break;
+    default:
+      g_assert_not_reached ();
   }
 
-  header = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
-  gtk_widget_show (header);
+  for (int i = 0; i < commands->len; i++) {
+    KgxProcess *process = g_ptr_array_index (commands, i);
+    GtkWidget *row;
 
-  gtk_list_box_row_set_header (row, header);
-}
+    row = g_object_new (HDY_TYPE_ACTION_ROW,
+                        "visible", TRUE,
+                        "can-focus", FALSE,
+                        "title", kgx_process_get_exec (process),
+                        NULL);
 
-static void
-kgx_close_dialog_init (KgxCloseDialog *self)
-{
-  gtk_widget_init_template (GTK_WIDGET (self));
+    gtk_container_add (GTK_CONTAINER (list), row);
+  }
 
-  gtk_list_box_set_header_func (GTK_LIST_BOX (self->list),
-                                separator_header,
-                                NULL,
-                                NULL);
-}
-
-/**
- * kgx_close_dialog_add_command:
- * @self: the #KgxCloseDialog
- * @command: the command the row is for
- * 
- * Adds a row to the #GtkListBox
- * 
- * Since: 0.2.0
- */
-void
-kgx_close_dialog_add_command (KgxCloseDialog *self,
-                              const char     *command)
-{
-  GtkWidget *row;
-
-  g_return_if_fail (KGX_IS_CLOSE_DIALOG (self));
-
-  row = g_object_new (KGX_TYPE_CLOSE_DIALOG_ROW,
-                      "command", command,
-                      NULL);
-
-  gtk_container_add (GTK_CONTAINER (self->list), row);
+  return dialog;
 }

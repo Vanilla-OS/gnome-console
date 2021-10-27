@@ -20,10 +20,10 @@
  * SECTION:kgx-terminal
  * @title: KgxTerminal
  * @short_description: The terminal
- * 
+ *
  * The main terminal widget with various features added such as a context
  * menu (via #GtkPopover) and link detection
- * 
+ *
  * Since: 0.1.0
  */
 
@@ -71,10 +71,30 @@ enum {
   PROP_0,
   PROP_THEME,
   PROP_OPAQUE,
+  PROP_PATH,
   LAST_PROP
 };
 
 static GParamSpec *pspecs[LAST_PROP] = { NULL, };
+
+enum {
+  SIZE_CHANGED,
+  N_SIGNALS
+};
+static guint signals[N_SIGNALS];
+
+
+static void
+kgx_terminal_dispose (GObject *object)
+{
+  KgxTerminal *self = KGX_TERMINAL (object);
+
+  g_clear_object (&self->actions);
+  g_clear_pointer (&self->current_url, g_free);
+  g_clear_object (&self->long_press_gesture);
+
+  G_OBJECT_CLASS (kgx_terminal_parent_class)->dispose (object);
+}
 
 
 static void
@@ -83,7 +103,7 @@ kgx_terminal_set_theme (KgxTerminal *self,
                         gboolean     opaque)
 {
   GdkRGBA fg;
-  GdkRGBA bg = (GdkRGBA) { 0.1, 0.1, 0.1, 0.96};
+  GdkRGBA bg = (GdkRGBA) { 0.05, 0.05, 0.05, 0.96 };
 
   // Workings of GDK_RGBA prevent this being static
   GdkRGBA palette[16] = {
@@ -129,7 +149,7 @@ kgx_terminal_set_theme (KgxTerminal *self,
     self->theme = theme;
     g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_THEME]);
   }
-  
+
   if (self->opaque != opaque) {
     self->opaque = opaque;
     g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_OPAQUE]);
@@ -164,6 +184,8 @@ kgx_terminal_get_property (GObject    *object,
                            GParamSpec *pspec)
 {
   KgxTerminal *self = KGX_TERMINAL (object);
+  const char *uri;
+  g_autoptr (GFile) path = NULL;
 
   switch (property_id) {
     case PROP_THEME:
@@ -172,11 +194,50 @@ kgx_terminal_get_property (GObject    *object,
     case PROP_OPAQUE:
       g_value_set_boolean (value, self->opaque);
       break;
+    case PROP_PATH:
+      if ((uri = vte_terminal_get_current_file_uri (VTE_TERMINAL (self)))) {
+        path = g_file_new_for_uri (uri);
+      } else if ((uri = vte_terminal_get_current_directory_uri (VTE_TERMINAL (self)))) {
+        path = g_file_new_for_uri (uri);
+      }
+      g_value_set_object (value, path);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
   }
 }
+
+
+static gboolean
+have_url_under_pointer (KgxTerminal *self, GdkEvent *event)
+{
+  g_autofree char *hyperlink = NULL;
+  g_autofree char *match = NULL;
+  int match_id;
+
+  g_clear_pointer (&self->current_url, g_free);
+
+  hyperlink = vte_terminal_hyperlink_check_event (VTE_TERMINAL (self), event);
+
+  if (G_UNLIKELY (hyperlink)) {
+    self->current_url = g_steal_pointer (&hyperlink);
+  } else {
+    match = vte_terminal_match_check_event (VTE_TERMINAL (self),
+                                            event,
+                                            &match_id);
+
+    for (int i = 0; i < KGX_TERMINAL_N_LINK_REGEX; i++) {
+      if (self->match_id[i] == match_id) {
+        self->current_url = g_steal_pointer (&match);
+        break;
+      }
+    }
+  }
+
+  return self->current_url != NULL;
+}
+
 
 static void
 context_menu (GtkWidget *widget,
@@ -184,28 +245,15 @@ context_menu (GtkWidget *widget,
               int        y,
               GdkEvent  *event)
 {
-  KgxTerminal    *self = KGX_TERMINAL (widget);
-  GAction        *act;
-  GtkWidget      *menu;
+  KgxTerminal *self = KGX_TERMINAL (widget);
+  GAction *act;
+  GtkWidget *menu;
   GtkApplication *app;
-  GMenu          *model;
-  GdkRectangle    rect = {x, y, 1, 1};
-  gboolean        value;
-  const char     *match;
-  int             match_id;
+  GMenu *model;
+  GdkRectangle rect = {x, y, 1, 1};
+  gboolean value;
 
-  match = vte_terminal_match_check_event (VTE_TERMINAL (self),
-                                          event,
-                                          &match_id);
-
-  self->current_url = NULL;
-  for (int i = 0; i < KGX_TERMINAL_N_LINK_REGEX; i++) {
-    if (self->match_id[i] == match_id) {
-      self->current_url = match;
-      break;
-    }
-  }
-  value = self->current_url != NULL;
+  value = have_url_under_pointer (self, event);
 
   act = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "open-link");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (act), value);
@@ -220,85 +268,20 @@ context_menu (GtkWidget *widget,
   gtk_popover_popup (GTK_POPOVER (menu));
 }
 
+
 static gboolean
 kgx_terminal_popup_menu (GtkWidget *self)
 {
   context_menu (self, 1, 1, NULL);
+
   return TRUE;
 }
 
-static gboolean
-kgx_terminal_button_press_event (GtkWidget *self, GdkEventButton *event)
-{
-  if (gdk_event_triggers_context_menu ((GdkEvent *) event) &&
-      event->type == GDK_BUTTON_PRESS)
-    {
-      context_menu (self, event->x, event->y, (GdkEvent *) event);
-      return TRUE;
-    }
-
-  return GTK_WIDGET_CLASS (kgx_terminal_parent_class)->button_press_event (self, event);
-}
 
 static void
-kgx_terminal_class_init (KgxTerminalClass *klass)
+open_link (KgxTerminal *self, guint32 timestamp)
 {
-  GObjectClass   *object_class = G_OBJECT_CLASS (klass);
-  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
-
-  object_class->set_property = kgx_terminal_set_property;
-  object_class->get_property = kgx_terminal_get_property;
-
-  widget_class->popup_menu = kgx_terminal_popup_menu;
-  widget_class->button_press_event = kgx_terminal_button_press_event;
-
-  /**
-   * KgxTerminal:theme:
-   * 
-   * The palette to use, one of the values of #KgxTheme
-   * 
-   * Officially only "night" exists, "hacker" is just a little fun
-   * 
-   * Bound to #KgxApplication:theme on the #KgxApplication
-   * 
-   * Stability: Private
-   * 
-   * Since: 0.1.0
-   */
-  pspecs[PROP_THEME] =
-    g_param_spec_enum ("theme", "Theme", "Terminal theme",
-                       KGX_TYPE_THEME, KGX_THEME_NIGHT,
-                       G_PARAM_READWRITE);
-
-  /**
-   * KgxTerminal:opaque:
-   * 
-   * Whether to disable transparency
-   * 
-   * Bound to #GtkWindow:is-maximized on the #KgxWindow
-   * 
-   * Stability: Private
-   * 
-   * Since: 0.1.0
-   */
-  pspecs[PROP_OPAQUE] =
-    g_param_spec_boolean ("opaque", "Opaque", "Terminal opaqueness",
-                          FALSE,
-                          G_PARAM_READWRITE);
-
-  g_object_class_install_properties (object_class, LAST_PROP, pspecs);
-}
-
-static void
-open_link_activated (GSimpleAction *action,
-                     GVariant      *parameter,
-                     gpointer       data)
-{
-  GError *error = NULL;
-  KgxTerminal *self = KGX_TERMINAL (data);
-  guint32 timestamp;
-
-  timestamp = GDK_CURRENT_TIME;
+  g_autoptr (GError) error = NULL;
 
   gtk_show_uri_on_window (GTK_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (self))),
                           self->current_url,
@@ -309,6 +292,117 @@ open_link_activated (GSimpleAction *action,
     g_warning ("Failed to open link %s", error->message);
   }
 }
+
+
+static gboolean
+kgx_terminal_button_press_event (GtkWidget *widget, GdkEventButton *event)
+{
+  KgxTerminal *self = KGX_TERMINAL (widget);
+  GdkModifierType state;
+
+  if (gdk_event_triggers_context_menu ((GdkEvent *) event) &&
+      event->type == GDK_BUTTON_PRESS) {
+    context_menu (widget, event->x, event->y, (GdkEvent *) event);
+
+    return TRUE;
+  }
+
+  state = event->state & gtk_accelerator_get_default_mod_mask ();
+
+  if (have_url_under_pointer (self, (GdkEvent *) event) &&
+      (event->button == 1 || event->button == 2) &&
+      state & GDK_CONTROL_MASK) {
+    open_link (self, event->time);
+
+    return GDK_EVENT_STOP;
+  }
+
+  return GTK_WIDGET_CLASS (kgx_terminal_parent_class)->button_press_event (widget,
+                                                                           event);
+}
+
+
+static void
+kgx_terminal_class_init (KgxTerminalClass *klass)
+{
+  GObjectClass   *object_class = G_OBJECT_CLASS (klass);
+  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+
+  object_class->dispose = kgx_terminal_dispose;
+  object_class->set_property = kgx_terminal_set_property;
+  object_class->get_property = kgx_terminal_get_property;
+
+  widget_class->popup_menu = kgx_terminal_popup_menu;
+  widget_class->button_press_event = kgx_terminal_button_press_event;
+
+  /**
+   * KgxTerminal:theme:
+   *
+   * The palette to use, one of the values of #KgxTheme
+   *
+   * Officially only "night" exists, "hacker" is just a little fun
+   *
+   * Bound to #KgxApplication:theme on the #KgxApplication
+   *
+   * Stability: Private
+   *
+   * Since: 0.1.0
+   */
+  pspecs[PROP_THEME] =
+    g_param_spec_enum ("theme", "Theme", "Terminal theme",
+                       KGX_TYPE_THEME, KGX_THEME_NIGHT,
+                       G_PARAM_READWRITE);
+
+  /**
+   * KgxTerminal:opaque:
+   *
+   * Whether to disable transparency
+   *
+   * Bound to #GtkWindow:is-maximized on the #KgxWindow
+   *
+   * Stability: Private
+   *
+   * Since: 0.1.0
+   */
+  pspecs[PROP_OPAQUE] =
+    g_param_spec_boolean ("opaque", "Opaque", "Terminal opaqueness",
+                          FALSE,
+                          G_PARAM_READWRITE);
+
+  /**
+   * KgxTerminal:path:
+   *
+   *
+   * Stability: Private
+   *
+   * Since: 0.3.0
+   */
+  pspecs[PROP_PATH] =
+    g_param_spec_object ("path", "Path", "Current path",
+                         G_TYPE_FILE,
+                         G_PARAM_READABLE);
+
+  g_object_class_install_properties (object_class, LAST_PROP, pspecs);
+
+  signals[SIZE_CHANGED] = g_signal_new ("size-changed",
+                                        G_TYPE_FROM_CLASS (klass),
+                                        G_SIGNAL_RUN_LAST,
+                                        0, NULL, NULL, NULL,
+                                        G_TYPE_NONE,
+                                        2,
+                                        G_TYPE_UINT,
+                                        G_TYPE_UINT);
+}
+
+
+static void
+open_link_activated (GSimpleAction *action,
+                     GVariant      *parameter,
+                     gpointer       data)
+{
+  open_link (KGX_TERMINAL (data), GDK_CURRENT_TIME);
+}
+
 
 static void
 copy_link_activated (GSimpleAction *action,
@@ -353,44 +447,15 @@ paste_response (GtkDialog    *dlg,
   g_free (paste);
 }
 
+
 static void
 got_text (GtkClipboard *clipboard,
-          const gchar  *text,
+          const char   *text,
           gpointer      data)
 {
-  g_autofree char *striped = g_strchug (g_strdup (text));
-  struct Paste    *paste = g_new (struct Paste, 1);
-
-  paste->dest = VTE_TERMINAL (data);
-  paste->text = g_strdup (text);
-
-  if (g_strstr_len (striped, -1, "sudo") != NULL &&
-      g_strstr_len (striped, -1, "\n") != NULL) {
-    GtkWidget *accept = NULL;
-    GtkWidget *dlg = gtk_message_dialog_new (GTK_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (data))),
-                                             GTK_DIALOG_MODAL,
-                                             GTK_MESSAGE_QUESTION,
-                                             GTK_BUTTONS_NONE,
-                                             _("You are pasting a command that runs as an administrator"));
-    gtk_message_dialog_format_secondary_text (GTK_MESSAGE_DIALOG (dlg),
-                                              // TRANSLATORS: %s is the command being pasted
-                                              _("Make sure you know what the command does:\n%s"),
-                                              text);
-
-    g_signal_connect (dlg, "response", G_CALLBACK (paste_response), paste);
-    gtk_dialog_add_button (GTK_DIALOG (dlg),
-                           _("_Cancel"),
-                           GTK_RESPONSE_DELETE_EVENT);
-    accept = gtk_dialog_add_button (GTK_DIALOG (dlg),
-                                    _("_Paste"),
-                                    GTK_RESPONSE_ACCEPT);
-    gtk_style_context_add_class (gtk_widget_get_style_context (accept),
-                                 GTK_STYLE_CLASS_DESTRUCTIVE_ACTION);
-    gtk_widget_show (dlg);
-  } else {
-    paste_response (NULL, GTK_RESPONSE_ACCEPT, paste);
-  }
+  kgx_terminal_accept_paste (KGX_TERMINAL (data), text);
 }
+
 
 static void
 paste_activated (GSimpleAction *action,
@@ -412,24 +477,25 @@ select_all_activated (GSimpleAction *action,
   vte_terminal_select_all (VTE_TERMINAL (data));
 }
 
+
 static void
 show_in_files_activated (GSimpleAction *action,
                          GVariant      *parameter,
                          gpointer       data)
 {
-  GDBusProxy      *proxy;
-  GVariant        *retval;
-  GVariantBuilder *builder;
-  GError          *error = NULL;
-  KgxTerminal     *term = KGX_TERMINAL (data);
-  const gchar     *uri = NULL;
-  const gchar     *method;
+  KgxTerminal *self = KGX_TERMINAL (data);
+  g_autoptr (GDBusProxy) proxy = NULL;
+  g_autoptr (GVariant) retval = NULL;
+  g_autoptr (GVariantBuilder) builder = NULL;
+  g_autoptr (GError) error = NULL;
+  const char *uri = NULL;
+  const char *method;
 
-  uri = vte_terminal_get_current_file_uri (VTE_TERMINAL (term));
+  uri = vte_terminal_get_current_file_uri (VTE_TERMINAL (self));
   method = "ShowItems";
 
   if (uri == NULL) {
-    uri = vte_terminal_get_current_directory_uri (VTE_TERMINAL (term));
+    uri = vte_terminal_get_current_directory_uri (VTE_TERMINAL (self));
     method = "ShowFolders";
   }
 
@@ -462,19 +528,14 @@ show_in_files_activated (GSimpleAction *action,
                                    G_DBUS_CALL_FLAGS_NONE,
                                    -1, NULL, &error);
 
-  g_variant_builder_unref (builder);
-  g_object_unref (proxy);
-
   if (!retval) {
     g_warning ("win.show-in-files: D-Bus call failed %s", error->message);
     return;
   }
-
-  g_variant_unref (retval);
 }
 
-static GActionEntry term_entries[] =
-{
+
+static GActionEntry term_entries[] = {
   { "open-link", open_link_activated, NULL, NULL, NULL },
   { "copy-link", copy_link_activated, NULL, NULL, NULL },
   { "copy", copy_activated, NULL, NULL, NULL },
@@ -482,6 +543,7 @@ static GActionEntry term_entries[] =
   { "select-all", select_all_activated, NULL, NULL, NULL },
   { "show-in-files", show_in_files_activated, NULL, NULL, NULL },
 };
+
 
 static void
 long_pressed (GtkGestureLongPress *gesture,
@@ -491,6 +553,7 @@ long_pressed (GtkGestureLongPress *gesture,
 {
   context_menu (GTK_WIDGET (self), (int) x, (int) y, NULL);
 }
+
 
 static void
 selection_changed (KgxTerminal *self)
@@ -502,6 +565,7 @@ selection_changed (KgxTerminal *self)
   g_simple_action_set_enabled (G_SIMPLE_ACTION (act),
                                vte_terminal_get_has_selection (VTE_TERMINAL (self)));
 }
+
 
 static void
 location_changed (KgxTerminal *self)
@@ -515,7 +579,26 @@ location_changed (KgxTerminal *self)
             vte_terminal_get_current_directory_uri (VTE_TERMINAL (self));
 
   g_simple_action_set_enabled (G_SIMPLE_ACTION (act), value);
+
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_PATH]);
 }
+
+
+static void
+size_changed (GtkWidget    *widget,
+              GdkRectangle *allocation)
+{
+  int          rows;
+  int          cols;
+  KgxTerminal *self = KGX_TERMINAL (widget);
+  VteTerminal *term = VTE_TERMINAL (self);
+
+  rows = vte_terminal_get_row_count (term);
+  cols = vte_terminal_get_column_count (term);
+
+  g_signal_emit (self, signals[SIZE_CHANGED], 0, rows, cols);
+}
+
 
 static void
 kgx_terminal_init (KgxTerminal *self)
@@ -523,8 +606,7 @@ kgx_terminal_init (KgxTerminal *self)
   GAction *act;
   GtkGesture *gesture;
 
-  self->theme = KGX_THEME_NIGHT;
-  self->opaque = FALSE;
+  kgx_terminal_set_theme (self, KGX_THEME_NIGHT, FALSE);
 
   self->actions = G_ACTION_MAP (g_simple_action_group_new ());
   g_action_map_add_action_entries (self->actions,
@@ -540,6 +622,7 @@ kgx_terminal_init (KgxTerminal *self)
   gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (gesture),
                                               GTK_PHASE_TARGET);
   g_signal_connect (gesture, "pressed", G_CALLBACK (long_pressed), self);
+  self->long_press_gesture = gesture;
 
   act = g_action_map_lookup_action (self->actions, "open-link");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (act), FALSE);
@@ -550,7 +633,11 @@ kgx_terminal_init (KgxTerminal *self)
   act = g_action_map_lookup_action (self->actions, "show-in-files");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (act), FALSE);
 
+  vte_terminal_set_mouse_autohide (VTE_TERMINAL (self), TRUE);
   vte_terminal_search_set_wrap_around (VTE_TERMINAL (self), TRUE);
+  vte_terminal_set_allow_hyperlink (VTE_TERMINAL (self), TRUE);
+  vte_terminal_set_enable_fallback_scrolling (VTE_TERMINAL (self), FALSE);
+  vte_terminal_set_scroll_unit_is_pixels (VTE_TERMINAL (self), TRUE);
 
   g_signal_connect (self, "selection-changed",
                     G_CALLBACK (selection_changed), NULL);
@@ -558,6 +645,8 @@ kgx_terminal_init (KgxTerminal *self)
                     G_CALLBACK (location_changed), NULL);
   g_signal_connect (self, "current-file-uri-changed",
                     G_CALLBACK (location_changed), NULL);
+  g_signal_connect (self, "size-allocate",
+                    G_CALLBACK (size_changed), NULL);
 
   for (int i = 0; i < KGX_TERMINAL_N_LINK_REGEX; i++) {
     g_autoptr (VteRegex) regex = NULL;
@@ -577,5 +666,44 @@ kgx_terminal_init (KgxTerminal *self)
     vte_terminal_match_set_cursor_name (VTE_TERMINAL (self),
                                         self->match_id[i],
                                         "pointer");
+  }
+}
+
+
+void
+kgx_terminal_accept_paste (KgxTerminal *self,
+                           const char  *text)
+{
+  g_autofree char *striped = g_strchug (g_strdup (text));
+  struct Paste    *paste = g_new (struct Paste, 1);
+
+  paste->dest = VTE_TERMINAL (self);
+  paste->text = g_strdup (text);
+
+  if (g_strstr_len (striped, -1, "sudo") != NULL &&
+      g_strstr_len (striped, -1, "\n") != NULL) {
+    GtkWidget *accept = NULL;
+    GtkWidget *dlg = gtk_message_dialog_new (GTK_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (self))),
+                                             GTK_DIALOG_MODAL,
+                                             GTK_MESSAGE_QUESTION,
+                                             GTK_BUTTONS_NONE,
+                                             _("You are pasting a command that runs as an administrator"));
+    gtk_message_dialog_format_secondary_text (GTK_MESSAGE_DIALOG (dlg),
+                                              // TRANSLATORS: %s is the command being pasted
+                                              _("Make sure you know what the command does:\n%s"),
+                                              text);
+
+    g_signal_connect (dlg, "response", G_CALLBACK (paste_response), paste);
+    gtk_dialog_add_button (GTK_DIALOG (dlg),
+                           _("_Cancel"),
+                           GTK_RESPONSE_DELETE_EVENT);
+    accept = gtk_dialog_add_button (GTK_DIALOG (dlg),
+                                    _("_Paste"),
+                                    GTK_RESPONSE_ACCEPT);
+    gtk_style_context_add_class (gtk_widget_get_style_context (accept),
+                                 "destructive-action");
+    gtk_widget_show (dlg);
+  } else {
+    paste_response (NULL, GTK_RESPONSE_ACCEPT, paste);
   }
 }

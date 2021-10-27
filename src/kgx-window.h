@@ -19,11 +19,37 @@
 #pragma once
 
 #include <gtk/gtk.h>
+#include "handy.h"
 
 #include "kgx-terminal.h"
 #include "kgx-process.h"
+#include "kgx-enums.h"
+#include "kgx-pages.h"
 
 G_BEGIN_DECLS
+
+#define KGX_WINDOW_STYLE_ROOT "root"
+#define KGX_WINDOW_STYLE_REMOTE "remote"
+
+/**
+ * KgxZoom:
+ * @KGX_ZOOM_IN: Make text bigger
+ * @KGX_ZOOM_OUT: Shrink text
+ *
+ * Indicates the zoom direction the zoom action was triggered for
+ *
+ * See #KgxPage:zoom, #KgxPages:zoom
+ *
+ * Since: 0.3.0
+ *
+ * Stability: Private
+ */
+typedef enum /*< enum,prefix=KGX >*/
+{
+  KGX_ZOOM_IN = 0,  /*< nick=in >*/
+  KGX_ZOOM_OUT = 1, /*< nick=out >*/
+} KgxZoom;
+
 
 #define KGX_TYPE_WINDOW (kgx_window_get_type())
 
@@ -36,64 +62,60 @@ G_BEGIN_DECLS
  * @last_cols: the column width last time we received #GtkWidget::size-allocate
  * @last_rows: the row count last time we received #GtkWidget::size-allocate
  * @timeout: the id of the #GSource used to hide the statusbar
- * @root: count of the children running as root, when its > 0 root styles are
- * applied to the headerbar
- * @remote: same as @root but for ssh
- * @children: all children of the terminal as a #GPid -> #KgxProcess map
  * @close_anyway: ignore running children and close without prompt
- * @header_bar: the #GtkHeaderBar that the styles are applied to
- * @terminal: the #KgxTerminal the window contains
- * @dims: the floating status bar
+ * @header_bar: the #HdyHeaderBar that the styles are applied to
+ * @search_entry: the #GtkSearchEntry inside @search_bar
  * @search_bar: the windows #GtkSearchBar
- * @search_wrap: the #KgxSearchBox in @search_bar
  * @exit_info: the #GtkRevealer hat wraps @exit_message
  * @exit_message: the #GtkLabel for showing important messages
  * @zoom_level: the #GtkLabel in the #GtkPopover showing the current zoom level
- * 
+ * @pages: the #KgxPages of #KgxPage current in the window
+ * @about_item: the #GtkModelButton for the about item
+ *
  * Since: 0.1.0
  */
 struct _KgxWindow
 {
   /*< private >*/
-  GtkApplicationWindow  parent_instance;
+  HdyApplicationWindow  parent_instance;
 
   /*< public >*/
   KgxTheme              theme;
-  char                 *working_dir;
-  char                 *command;
-  gboolean              close_on_zero;
 
   /* Size indicator */
   int                   last_cols;
   int                   last_rows;
   guint                 timeout;
 
-  /* Remote/root states */
-  GHashTable           *root;
-  GHashTable           *remote;
-  GHashTable           *children;
   gboolean              close_anyway;
 
   /* Template widgets */
   GtkWidget            *header_bar;
-  GtkWidget            *terminal;
-  GtkWidget            *dims;
-  GtkWidget            *search_entry;
-  GtkWidget            *search_bar;
   GtkWidget            *exit_info;
   GtkWidget            *exit_message;
   GtkWidget            *zoom_level;
   GtkWidget            *about_item;
+  GtkWidget            *tab_bar;
+  GtkWidget            *tab_button;
+  GtkWidget            *tab_switcher;
+  GtkWidget            *pages;
 
-  char                 *notification_id;
+  int                   current_width;
+  int                   current_height;
+  gboolean              is_maximized_or_tiled;
+
+  GActionMap           *tab_actions;
 };
 
-G_DECLARE_FINAL_TYPE (KgxWindow, kgx_window, KGX, WINDOW, GtkApplicationWindow)
+G_DECLARE_FINAL_TYPE (KgxWindow, kgx_window, KGX, WINDOW, HdyApplicationWindow)
 
-char       *kgx_window_get_working_dir (KgxWindow    *self);
-void        kgx_window_push_child      (KgxWindow    *self,
-                                        KgxProcess   *process);
-void        kgx_window_pop_child       (KgxWindow    *self,
-                                        KgxProcess   *process);
+GFile      *kgx_window_get_working_dir (KgxWindow    *self);
+void        kgx_window_show_status     (KgxWindow    *self,
+                                        const char   *status);
+KgxPages   *kgx_window_get_pages       (KgxWindow    *self);
+
+void        kgx_window_get_size        (KgxWindow    *self,
+                                        int          *width,
+                                        int          *height);
 
 G_END_DECLS

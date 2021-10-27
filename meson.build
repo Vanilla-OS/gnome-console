@@ -1,22 +1,39 @@
-project('kgx', 'c', version: '0.2.1',
+project('kgx', 'c', version: '0.4.0',
   meson_version: '>= 0.49.0',
-  default_options: ['werror=true', 'c_std=gnu11', 'cpp_std=gnu++17'],
+  default_options: [
+    'werror=true',
+    'buildtype=debugoptimized',
+    'c_std=c17',
+    'vte:c_std=gnu11',
+    'vte:cpp_std=gnu++17',
+    'vte:werror=false',
+    'vte:gir=false',
+    'vte:vapi=false',
+    'handy:vapi=false',
+    'handy:introspection=disabled',
+  ],
 )
 
 i18n = import('i18n')
 
+app_id = 'org.gnome.zbrown.KingsCross'
+app_path = '/org/gnome/zbrown/KingsCross/'
+
+prefix = get_option('prefix')
+libdir = prefix / get_option('libdir')
+datadir = prefix / get_option('datadir')
+pkglibdir = prefix / libdir / meson.project_name()
+pkgdatadir = datadir / meson.project_name()
+
 conf = configuration_data()
 conf.set_quoted('PACKAGE_VERSION', '@VCS_TAG@')
 conf.set_quoted('GETTEXT_PACKAGE', 'kgx')
-conf.set_quoted('LOCALEDIR',
-                    join_paths(get_option('prefix'), get_option('localedir')))
-conf.set_quoted('RES_PATH', '/org/gnome/zbrown/KingsCross/')
-conf.set('BINDIR', join_paths(get_option('prefix'), get_option('bindir')))
-if get_option('gtop')
-  conf.set('HAS_GTOP', 1)
-else
-  conf.set('HAS_GTOP', 0)
-endif
+conf.set_quoted('KGX_APPLICATION_ID', app_id)
+conf.set('KGX_APPLICATION_ID_RAW', app_id)
+conf.set_quoted('KGX_APPLICATION_PATH', app_path)
+conf.set('KGX_APPLICATION_PATH_RAW', app_path)
+conf.set_quoted('LOCALEDIR', prefix / get_option('localedir'))
+conf.set('BINDIR', prefix / get_option('bindir'))
 if get_option('generic')
   conf.set('IS_GENERIC', 1)
 else
@@ -29,13 +46,15 @@ config_h_in = configure_file(
 config_h = vcs_tag(input: config_h_in, output: 'kgx-config.h')
 
 gtk_ver = 'GDK_VERSION_3_24'
-glib_ver = 'GLIB_VERSION_2_58'
+glib_ver = 'GLIB_VERSION_2_62'
 add_project_arguments([
   '-I' + meson.build_root(),
   '-DGDK_VERSION_MIN_REQUIRED=@0@'.format(gtk_ver),
   '-DGDK_VERSION_MAX_ALLOWED=@0@'.format(gtk_ver),
   '-DGLIB_VERSION_MIN_REQUIRED=@0@'.format(glib_ver),
   '-DGLIB_VERSION_MAX_ALLOWED=@0@'.format(glib_ver),
+  '-DG_LOG_USE_STRUCTURED',
+  '-DG_LOG_DOMAIN="Kgx"',
 ], language: 'c')
 
 cc = meson.get_compiler('c')
@@ -72,23 +91,16 @@ add_project_arguments(
   language: 'c'
 )
 
-gi_runner = configure_file(
-  input: 'gi.in',
-  output: 'gi',
-  configuration: {
-    'BUILD_DIR': join_paths(meson.current_build_dir(), 'src')
-  }
-)
-
 subdir('data')
 subdir('src')
+
+nautilus_dep = dependency('libnautilus-extension', required: get_option('nautilus'))
+if nautilus_dep.found()
+  gio_unix = dependency('gio-unix-2.0')
+  subdir('nautilus')
+endif
+
 subdir('po')
 subdir('doc')
-if get_option('tests')
-  if not get_option('gir')
-    error('Tests require GIR')
-  endif
-  subdir('tests')
-endif
 
 meson.add_install_script('build-aux/meson/postinstall.py')

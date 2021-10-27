@@ -20,42 +20,34 @@
  * SECTION:kgx-window
  * @title: KgxWindow
  * @short_description: Window
- * 
- * The main #GtkApplicationWindow that acts as the terminal
- * 
+ *
+ * The main #HdyApplicationWindow that acts as the terminal
+ *
  * Since: 0.1.0
  */
 
-#define G_LOG_DOMAIN "Kgx"
+#include "kgx-config.h"
 
 #include <glib/gi18n.h>
 #include <vte/vte.h>
-#define PCRE2_CODE_UNIT_WIDTH 0
-#include <pcre2.h>
 #include <math.h>
-#define HANDY_USE_UNSTABLE_API
 #include <handy.h>
 
 #include "rgba.h"
-#include "fp-vte-util.h"
 
-#include "kgx-config.h"
 #include "kgx-window.h"
 #include "kgx-application.h"
 #include "kgx-process.h"
 #include "kgx-close-dialog.h"
+#include "kgx-pages.h"
+#include "kgx-tab-button.h"
+#include "kgx-tab-switcher.h"
 
-#define KGX_WINDOW_STYLE_ROOT "root"
-#define KGX_WINDOW_STYLE_REMOTE "remote"
-
-G_DEFINE_TYPE (KgxWindow, kgx_window, GTK_TYPE_APPLICATION_WINDOW)
+G_DEFINE_TYPE (KgxWindow, kgx_window, HDY_TYPE_APPLICATION_WINDOW)
 
 enum {
   PROP_0,
-  PROP_THEME,
-  PROP_INITIAL_WORK_DIR,
-  PROP_COMMAND,
-  PROP_CLOSE_ON_ZERO,
+  PROP_APPLICATION,
   LAST_PROP
 };
 
@@ -63,224 +55,76 @@ static GParamSpec *pspecs[LAST_PROP] = { NULL, };
 
 
 static void
-kgx_window_set_theme (KgxWindow *self,
-                      KgxTheme   theme)
+update_zoom (KgxWindow      *self,
+             KgxApplication *app)
 {
-  GdkRGBA fg;
-  GdkRGBA bg = (GdkRGBA) { 0.1, 0.1, 0.1, 0.96};
+  g_autofree char *label = NULL;
+  gdouble zoom;
 
-  // Workings of GDK_RGBA prevent this being static
-  GdkRGBA palette[16] = {
-    GDK_RGBA ("241f31"), // Black
-    GDK_RGBA ("c01c28"), // Red
-    GDK_RGBA ("2ec27e"), // Green
-    GDK_RGBA ("f5c211"), // Yellow
-    GDK_RGBA ("1e78e4"), // Blue
-    GDK_RGBA ("9841bb"), // Magenta
-    GDK_RGBA ("0ab9dc"), // Cyan
-    GDK_RGBA ("c0bfbc"), // White
-    GDK_RGBA ("5e5c64"), // Bright Black
-    GDK_RGBA ("ed333b"), // Bright Red
-    GDK_RGBA ("57e389"), // Bright Green
-    GDK_RGBA ("f8e45c"), // Bright Yellow
-    GDK_RGBA ("51a1ff"), // Bright Blue
-    GDK_RGBA ("c061cb"), // Bright Magenta
-    GDK_RGBA ("4fd2fd"), // Bright Cyan
-    GDK_RGBA ("f6f5f4"), // Bright White
-  };
+  g_object_get (app,
+                "font-scale", &zoom,
+                NULL);
 
-  self->theme = theme;
-
-  switch (theme) {
-    case KGX_THEME_HACKER:
-      fg = (GdkRGBA) { 0.1, 1.0, 0.1, 1.0};
-      break;
-    case KGX_THEME_NIGHT:
-    default:
-      fg = (GdkRGBA) { 1.0, 1.0, 1.0, 1.0};
-      break;
-  }
-
-  vte_terminal_set_colors (VTE_TERMINAL (self->terminal),
-                           &fg,
-                           &bg,
-                           palette,
-                           16);
-
-  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_THEME]);
+  label = g_strdup_printf ("%i%%",
+                           (int) round (zoom * 100));
+  gtk_label_set_label (GTK_LABEL (self->zoom_level), label);
 }
 
-static void
-wait_cb (GPid     pid,
-         gint     status,
-         gpointer user_data)
-
-{
-  KgxWindow *self = KGX_WINDOW (user_data);
-  #if HAS_GTOP
-  GtkApplication *app = NULL;
-  #endif
-  g_autoptr (GError) error = NULL;
-  GtkStyleContext *context = NULL;
-
-  g_return_if_fail (KGX_IS_WINDOW (self));
-
-  #if HAS_GTOP
-  app = gtk_window_get_application (GTK_WINDOW (self));
-
-  // If the application is in closing the app may already be null
-  if (app) {
-    kgx_application_remove_watch (KGX_APPLICATION (app), pid);
-  }
-  #endif
-
-  // If the window has already closed we can't do much
-  if (self->exit_info == NULL) {
-    return;
-  }
-
-  /* wait_check will set @error if it got a signal/non-zero exit */
-  if (!g_spawn_check_exit_status (status, &error)) {
-    g_autofree char *message = NULL;
-
-    context = gtk_widget_get_style_context (GTK_WIDGET (self->exit_info));
-
-    // translators: <b> </b> marks the text as bold, ensure they are
-    // matched please!
-    message = g_strdup_printf (_("<b>Read Only</b> — Command exited with code %i"),
-                               status);
-
-    gtk_label_set_markup (GTK_LABEL (self->exit_message), message);
-    gtk_style_context_add_class (context, "error");
-  } else if (self->close_on_zero) {
-    gtk_widget_destroy (GTK_WIDGET (self));
-
-    return;
-  } else {
-    context = gtk_widget_get_style_context (GTK_WIDGET (self->exit_info));
-
-    gtk_label_set_markup (GTK_LABEL (self->exit_message),
-    // translators: <b> </b> marks the text as bold, ensure they are
-    // matched please!
-                         _("<b>Read Only</b> — Command exited"));
-    gtk_style_context_remove_class (context, "error");
-  }
-
-  gtk_revealer_set_reveal_child (GTK_REVEALER (self->exit_info), TRUE);
-}
 
 static void
-spawned (VtePty       *pty,
-         GAsyncResult *res,
-         gpointer      data)
-
+zoomed (GObject *object, GParamSpec *pspec, gpointer data)
 {
-  g_autoptr(GError) error = NULL;
   KgxWindow *self = KGX_WINDOW (data);
-  #if HAS_GTOP
-  GtkApplication *app = NULL;
-  #endif
-  GPid pid;
 
-  g_return_if_fail (VTE_IS_PTY (pty));
-  g_return_if_fail (G_IS_ASYNC_RESULT (res));
-
-  fp_vte_pty_spawn_finish (pty, res, &pid, &error);
-
-  if (error) {
-    GtkStyleContext *context;
-    g_autofree char *message = NULL;
-
-    g_critical ("Failed to spawn: %s", error->message);
-
-    context = gtk_widget_get_style_context (GTK_WIDGET (self->exit_info));
-
-    gtk_style_context_add_class (context, "error");
-
-    // translators: <b> </b> marks the text as bold, ensure they are
-    // matched please!
-    message = g_strdup_printf (_("<b>Failed to start</b> — %s"),
-                               error->message);
-   
-    gtk_label_set_markup (GTK_LABEL (self->exit_message), message);
-
-    gtk_revealer_set_reveal_child (GTK_REVEALER (self->exit_info), TRUE);
-
-    return;
-  }
-
-  #if HAS_GTOP
-  app = gtk_window_get_application (GTK_WINDOW (self));
-
-  kgx_application_add_watch (KGX_APPLICATION (app),
-                             pid,
-                             KGX_WINDOW (self));
-  #endif
-
-  g_child_watch_add (pid, wait_cb, self);
+  update_zoom (self, KGX_APPLICATION (object));
 }
+
 
 static void
 kgx_window_constructed (GObject *object)
 {
   KgxWindow          *self = KGX_WINDOW (object);
-  const char         *initial = NULL;
-  g_autoptr (VtePty)  pty = NULL;
   g_autoptr (GError)  error = NULL;
-  g_auto (GStrv)      shell = NULL;
-  g_auto (GStrv)      env = NULL;
-  g_autofree char    *command = NULL;
-  guint               id = 0;
-  
-  id = gtk_application_window_get_id (GTK_APPLICATION_WINDOW (self));
-
-  self->notification_id = g_strdup_printf ("command-completed-%u", id);
-
-  pty = vte_pty_new_sync (fp_vte_pty_default_flags (), NULL, &error);
-
-  if (G_UNLIKELY (self->command != NULL)) {
-    // dup the string so we can free command later to handle the
-    // (more likely) fp_vte_guess_shell case
-    command = g_strdup (self->command);
-  } else {
-    command = fp_vte_guess_shell (NULL, &error);
-    if (error) {
-      g_warning ("flatterm: %s", error->message);
-    }
-  }
-
-  if (command == NULL) {
-    command = g_strdup ("/bin/sh");
-    g_warning ("Defaulting to %s", shell[0]);
-  }
-
-  g_shell_parse_argv (command, NULL, &shell, &error);
-  if (error) {
-    g_warning ("Can't handle %s: %s", command, error->message);
-  }
-
-  if (self->working_dir) {
-    initial = self->working_dir;
-  } else {
-    initial = g_get_home_dir ();
-  }
-
-  g_debug ("Working in %s", initial);
-
-  env = g_environ_setenv (env, "TERM", "xterm-256color", TRUE);
-
-  vte_terminal_set_pty (VTE_TERMINAL (self->terminal), pty);
-  fp_vte_pty_spawn_async (pty,
-                          initial,
-                          (const gchar * const *) shell,
-                          (const gchar * const *) env,
-                          -1,
-                          NULL,
-                          (GAsyncReadyCallback) spawned,
-                          self);
+  GtkApplication     *application = NULL;
 
   G_OBJECT_CLASS (kgx_window_parent_class)->constructed (object);
+
+  application = gtk_window_get_application (GTK_WINDOW (self));
+
+  g_object_bind_property (application, "theme",
+                          self->pages, "theme",
+                          G_BINDING_SYNC_CREATE);
+
+  g_object_bind_property (application, "font",
+                          self->pages, "font",
+                          G_BINDING_SYNC_CREATE);
+
+  g_object_bind_property (application, "font-scale",
+                          self->pages, "zoom",
+                          G_BINDING_SYNC_CREATE);
+
+  g_object_bind_property (application, "scrollback-lines",
+                          self->pages, "scrollback-lines",
+                          G_BINDING_SYNC_CREATE);
+
+  g_signal_connect (application,
+                    "notify::font-scale", G_CALLBACK (zoomed),
+                    self);
+
+  update_zoom (self, KGX_APPLICATION (application));
 }
+
+
+static void
+kgx_window_dispose (GObject *object)
+{
+  KgxWindow *self = KGX_WINDOW (object);
+
+  g_clear_object (&self->tab_actions);
+
+  G_OBJECT_CLASS (kgx_window_parent_class)->dispose (object);
+}
+
 
 static void
 kgx_window_set_property (GObject      *object,
@@ -291,23 +135,16 @@ kgx_window_set_property (GObject      *object,
   KgxWindow *self = KGX_WINDOW (object);
 
   switch (property_id) {
-    case PROP_THEME:
-      kgx_window_set_theme (self, g_value_get_enum (value));
-      break;
-    case PROP_INITIAL_WORK_DIR:
-      self->working_dir = g_value_dup_string (value);
-      break;
-    case PROP_COMMAND:
-      self->command = g_value_dup_string (value);
-      break;
-    case PROP_CLOSE_ON_ZERO:
-      self->close_on_zero = g_value_get_boolean (value);
+    case PROP_APPLICATION:
+      gtk_window_set_application (GTK_WINDOW (self),
+                                  g_value_get_object (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
   }
 }
+
 
 static void
 kgx_window_get_property (GObject    *object,
@@ -318,17 +155,9 @@ kgx_window_get_property (GObject    *object,
   KgxWindow *self = KGX_WINDOW (object);
 
   switch (property_id) {
-    case PROP_THEME:
-      g_value_set_enum (value, self->theme);
-      break;
-    case PROP_INITIAL_WORK_DIR:
-      g_value_set_string (value, self->working_dir);
-      break;
-    case PROP_COMMAND:
-      g_value_set_string (value, self->command);
-      break;
-    case PROP_CLOSE_ON_ZERO:
-      g_value_set_boolean (value, self->close_on_zero);
+    case PROP_APPLICATION:
+      g_value_set_object (value,
+                          gtk_window_get_application (GTK_WINDOW (self)));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -336,26 +165,7 @@ kgx_window_get_property (GObject    *object,
   }
 }
 
-static void
-kgx_window_finalize (GObject *object)
-{
-  KgxWindow *self = KGX_WINDOW (object);
-  GtkApplication *app = gtk_window_get_application (GTK_WINDOW (self));
 
-  g_application_withdraw_notification (G_APPLICATION (app),
-                                       self->notification_id);
-
-  g_clear_pointer (&self->working_dir, g_free);
-  g_clear_pointer (&self->command, g_free);
-  g_clear_pointer (&self->notification_id, g_free);
-
-  g_clear_pointer (&self->root, g_hash_table_unref);
-  g_clear_pointer (&self->remote, g_hash_table_unref);
-
-  G_OBJECT_CLASS (kgx_window_parent_class)->finalize (object);
-}
-
-#if HAS_GTOP
 static void
 delete_response (GtkWidget *dlg,
                  int        response,
@@ -370,70 +180,32 @@ delete_response (GtkWidget *dlg,
   }
 }
 
+
 static gboolean
 kgx_window_delete_event (GtkWidget   *widget,
                          GdkEventAny *event)
 {
   KgxWindow *self = KGX_WINDOW (widget);
-  GHashTableIter iter;
   GtkWidget *dlg;
-  gpointer pid, process;
+  g_autoptr (GPtrArray) children = NULL;
 
-  if (g_hash_table_size (self->children) < 1 || self->close_anyway) {
-    return FALSE; // Aka no, I don't want to block closing
+  children = kgx_pages_get_children (KGX_PAGES (self->pages));
+
+  if (children->len < 1 || self->close_anyway) {
+    return FALSE; // Aka no, I don’t want to block closing
   }
 
-  dlg = g_object_new (KGX_TYPE_CLOSE_DIALOG,
-                      "transient-for", self,
-                      "use-header-bar", TRUE,
-                      NULL);
+  dlg = kgx_close_dialog_new (KGX_CONTEXT_WINDOW, children);
+
+  gtk_window_set_transient_for (GTK_WINDOW (dlg), GTK_WINDOW (self));
 
   g_signal_connect (dlg, "response", G_CALLBACK (delete_response), self);
 
-  g_hash_table_iter_init (&iter, self->children);
-  while (g_hash_table_iter_next (&iter, &pid, &process)) {
-    kgx_close_dialog_add_command (KGX_CLOSE_DIALOG (dlg),
-                                  kgx_process_get_exec (process));
-  }
-
   gtk_widget_show (dlg);
-  
+
   return TRUE; // Block the close
 }
-#else
-static gboolean
-kgx_window_delete_event (GtkWidget   *widget,
-                         GdkEventAny *event)
-{
-  return FALSE; // Aka no, I don't want to block closing
-}
-#endif
 
-static void
-application_set (GObject *object, GParamSpec *pspec, gpointer data)
-{
-  GtkApplication *app;
-
-  app = gtk_window_get_application (GTK_WINDOW (object));
-
-  g_object_bind_property (app,
-                          "theme",
-                          object,
-                          "theme",
-                          G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE);
-
-  g_object_bind_property (app,
-                          "font",
-                          KGX_WINDOW (object)->terminal,
-                          "font-desc",
-                          G_BINDING_SYNC_CREATE);
-
-  g_object_bind_property (app,
-                          "font-scale",
-                          KGX_WINDOW (object)->terminal,
-                          "font-scale",
-                          G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE);
-}
 
 static void
 active_changed (GObject *object, GParamSpec *pspec, gpointer data)
@@ -449,147 +221,169 @@ active_changed (GObject *object, GParamSpec *pspec, gpointer data)
   }
 }
 
-static void
-search_enabled (GObject    *object,
-                GParamSpec *pspec,
-                KgxWindow  *self)
-{
-  if (!hdy_search_bar_get_search_mode (HDY_SEARCH_BAR (self->search_bar))) {
-    gtk_widget_grab_focus (self->terminal);
-  }
-}
-
-static void
-search_changed (HdySearchBar *bar,
-                KgxWindow    *self)
-{
-  VteRegex *regex;
-  GError *error = NULL;
-  const char *search = NULL;
-
-  search = gtk_entry_get_text (GTK_ENTRY (self->search_entry));
-
-  regex = vte_regex_new_for_search (g_regex_escape_string (search, -1),
-                                    -1, PCRE2_MULTILINE, &error);
-
-  if (error) {
-    g_warning ("Search error: %s", error->message);
-    return;
-  }
-
-  vte_terminal_search_set_regex (VTE_TERMINAL (self->terminal),
-                                 regex, 0);
-}
-
-static void
-search_next (HdySearchBar *bar,
-             KgxWindow    *self)
-{
-  vte_terminal_search_find_next (VTE_TERMINAL (self->terminal));
-}
-
-static void
-search_prev (HdySearchBar *bar,
-             KgxWindow    *self)
-{
-  vte_terminal_search_find_previous (VTE_TERMINAL (self->terminal));
-}
-
-static void
-font_increase (VteTerminal *term,
-               KgxWindow   *self)
-{
-  GAction *action = NULL;
-
-  action = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-in");
-  g_action_activate (action, NULL);
-}
-
-static void
-font_decrease (VteTerminal *term,
-               KgxWindow   *self)
-{
-  GAction *action = NULL;
-
-  action = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-out");
-  g_action_activate (action, NULL);
-}
-
-static void
-update_actions (KgxWindow *self)
-{
-  VteTerminal *term = VTE_TERMINAL (self->terminal);
-  gdouble current = vte_terminal_get_font_scale (term);
-  GAction *action;
-
-  action = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-out");
-  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), current > 0.5);
-  action = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-normal");
-  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), current != 1.0);
-  action = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-in");
-  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), current < 2.0);
-}
-
-static void
-font_scaled (VteTerminal *term,
-             GParamSpec  *param,
-             KgxWindow   *self)
-{
-  g_autofree char *label = NULL;
-
-  label = g_strdup_printf ("%i%%",
-                           (int) round (vte_terminal_get_font_scale (term) * 100));
-  gtk_label_set_label (GTK_LABEL (self->zoom_level), label);
-
-  update_actions (self);
-}
 
 static gboolean
-size_timeout (KgxWindow *self)
+key_press_event (GtkWidget   *widget,
+                 GdkEventKey *event,
+                 KgxWindow   *self)
 {
-  self->timeout = 0;
+  GdkModifierType default_modifiers = gtk_accelerator_get_default_mod_mask ();
+  guint keyval;
+  GdkModifierType state;
+  GdkModifierType consumed;
+  GdkKeymap *keymap;
 
-  gtk_widget_hide (self->dims);
+  gdk_event_get_state ((GdkEvent *) event, &state);
 
-  return G_SOURCE_REMOVE;
+  keymap = gdk_keymap_get_for_display (gtk_widget_get_display (widget));
+
+  gdk_keymap_translate_keyboard_state (keymap,
+                                       event->hardware_keycode,
+                                       state,
+                                       event->group,
+                                       &keyval, NULL, NULL, &consumed);
+
+  state &= ~consumed & default_modifiers;
+
+  /* Override some shortcuts from HdyTabView:shortcut-widget back, as they are
+   * needed for terminal apps. This should be fixed on libhandy side, but would
+   * likely require API changes, so carry this for now.
+   *
+   * See https://gitlab.gnome.org/GNOME/libhandy/-/issues/422
+   */
+  if ((keyval == GDK_KEY_Page_Up ||
+       keyval == GDK_KEY_KP_Page_Up ||
+       keyval == GDK_KEY_Page_Down ||
+       keyval == GDK_KEY_KP_Page_Down ||
+       keyval == GDK_KEY_Home ||
+       keyval == GDK_KEY_KP_Home ||
+       keyval == GDK_KEY_End ||
+       keyval == GDK_KEY_KP_End) &&
+      (state == GDK_CONTROL_MASK ||
+       state == (GDK_CONTROL_MASK | GDK_SHIFT_MASK))) {
+    return kgx_pages_key_press_event (KGX_PAGES (self->pages),
+                                      (GdkEvent *) event);
+  }
+
+  return GDK_EVENT_PROPAGATE;
 }
+
 
 static void
-size_changed (GtkWidget    *widget,
-              GdkRectangle *allocation,
-              KgxWindow    *self)
+zoom (KgxPages  *pages,
+      KgxZoom    dir,
+      KgxWindow *self)
 {
-  char        *label;
-  int          cols;
-  int          rows;
-  VteTerminal *term = VTE_TERMINAL (widget);
+  GAction *action = NULL;
+  GtkApplication *app = gtk_window_get_application (GTK_WINDOW (self));
 
-  if (gtk_window_is_maximized (GTK_WINDOW (self))) {
-    // Don't show when maximised as it isn't very interesting
-    return;
+  switch (dir) {
+    case KGX_ZOOM_IN:
+      action = g_action_map_lookup_action (G_ACTION_MAP (app), "zoom-in");
+      break;
+    case KGX_ZOOM_OUT:
+      action = g_action_map_lookup_action (G_ACTION_MAP (app), "zoom-out");
+      break;
+    default:
+      g_return_if_reached ();
   }
-
-  cols = vte_terminal_get_column_count (term);
-  rows = vte_terminal_get_row_count (term);
-
-  if (self->timeout != 0) {
-    g_source_remove (self->timeout);
-  }
-  self->timeout = g_timeout_add (800, G_SOURCE_FUNC (size_timeout), self);
-
-  if (cols == self->last_cols && rows == self->last_rows)
-    return;
-
-  self->last_cols = cols;
-  self->last_rows = rows;
-
-  label = g_strdup_printf ("%i × %i", cols, rows);
-
-  gtk_label_set_label (GTK_LABEL (self->dims), label);
-  gtk_widget_show (self->dims);
-
-  g_free (label);
+  g_action_activate (action, NULL);
 }
+
+
+static void
+status_changed (GObject *object, GParamSpec *pspec, gpointer data)
+{
+  KgxWindow *self = KGX_WINDOW (object);
+  GtkStyleContext *context;
+  KgxStatus status;
+
+  context = gtk_widget_get_style_context (GTK_WIDGET (self));
+
+  status = kgx_pages_current_status (KGX_PAGES (self->pages));
+
+  if (status & KGX_REMOTE) {
+    gtk_style_context_add_class (context, KGX_WINDOW_STYLE_REMOTE);
+  } else {
+    gtk_style_context_remove_class (context, KGX_WINDOW_STYLE_REMOTE);
+  }
+
+  if (status & KGX_PRIVILEGED) {
+    gtk_style_context_add_class (context, KGX_WINDOW_STYLE_ROOT);
+  } else {
+    gtk_style_context_remove_class (context, KGX_WINDOW_STYLE_ROOT);
+  }
+}
+
+
+static void
+extra_drag_data_received (HdyTabBar        *bar,
+                          HdyTabPage       *page,
+                          GdkDragContext   *context,
+                          GtkSelectionData *selection_data,
+                          guint             info,
+                          guint             time,
+                          KgxWindow        *self)
+{
+  KgxTab *tab = KGX_TAB (hdy_tab_page_get_child (page));
+
+  kgx_tab_accept_drop (tab, selection_data);
+}
+
+
+static void new_tab_activated (GSimpleAction *action,
+                               GVariant      *parameter,
+                               gpointer       data);
+
+
+static void
+new_tab_cb (KgxTabSwitcher *switcher,
+            KgxWindow      *self)
+{
+  new_tab_activated (NULL, NULL, self);
+}
+
+
+static gboolean
+kgx_window_window_state_event (GtkWidget           *widget,
+                               GdkEventWindowState *event)
+{
+  KgxWindow *self = KGX_WINDOW (widget);
+
+  self->is_maximized_or_tiled =
+    (event->new_window_state & (GDK_WINDOW_STATE_FULLSCREEN |
+                                GDK_WINDOW_STATE_MAXIMIZED |
+                                GDK_WINDOW_STATE_TILED |
+                                GDK_WINDOW_STATE_TOP_TILED |
+                                GDK_WINDOW_STATE_RIGHT_TILED |
+                                GDK_WINDOW_STATE_BOTTOM_TILED |
+                                GDK_WINDOW_STATE_LEFT_TILED)) > 0;
+
+  g_object_set (self->pages, "opaque", self->is_maximized_or_tiled, NULL);
+
+  if (self->is_maximized_or_tiled)
+    gtk_style_context_add_class (gtk_widget_get_style_context (widget), "opaque");
+  else
+    gtk_style_context_remove_class (gtk_widget_get_style_context (widget), "opaque");
+
+  return GTK_WIDGET_CLASS (kgx_window_parent_class)->window_state_event (widget, event);
+}
+
+
+static void
+kgx_window_size_allocate (GtkWidget     *widget,
+                          GtkAllocation *alloc)
+{
+  KgxWindow *self = KGX_WINDOW (widget);
+
+  GTK_WIDGET_CLASS (kgx_window_parent_class)->size_allocate (widget, alloc);
+
+  if (!self->is_maximized_or_tiled)
+    gtk_window_get_size (GTK_WINDOW (self),
+                         &self->current_width,
+                         &self->current_height);
+}
+
 
 static void
 kgx_window_class_init (KgxWindowClass *klass)
@@ -598,122 +392,118 @@ kgx_window_class_init (KgxWindowClass *klass)
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
 
   object_class->constructed = kgx_window_constructed;
+  object_class->dispose = kgx_window_dispose;
   object_class->set_property = kgx_window_set_property;
   object_class->get_property = kgx_window_get_property;
-  object_class->finalize = kgx_window_finalize;
 
   widget_class->delete_event = kgx_window_delete_event;
+  widget_class->window_state_event = kgx_window_window_state_event;
+  widget_class->size_allocate = kgx_window_size_allocate;
 
   /**
-   * KgxWindow:theme:
-   * 
-   * The #KgxTheme used in the window, is bound to #KgxApplication:theme
-   * 
-   * Since: 0.1.0
+   * KgxWindow:application:
+   *
+   * Proxy for #GtkWindow #GtkWindow:application but with %G_PARAM_CONSTRUCT,
+   * simple as that
+   *
+   * Since: 0.3.0
    */
-  pspecs[PROP_THEME] =
-    g_param_spec_enum ("theme", "Theme", "Terminal theme",
-                       KGX_TYPE_THEME, KGX_THEME_HACKER,
-                       G_PARAM_READWRITE);
-
-
-  /**
-   * KgxWindow:initial-work-dir:
-   * 
-   * Used to handle --working-dir
-   * 
-   * Since: 0.1.0
-   */
-  pspecs[PROP_INITIAL_WORK_DIR] =
-    g_param_spec_string ("initial-work-dir", "Initial directory",
-                         "Initial working directory",
-                         NULL,
-                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY);
-
-  /**
-   * KgxWindow:command:
-   * 
-   * Used to handle -e
-   * 
-   * Since: 0.1.0
-   */
-  pspecs[PROP_COMMAND] =
-    g_param_spec_string ("command", "Command",
-                         "Command to run",
-                         NULL,
-                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY);
-
-  /**
-   * KgxWindow:close-on-zero:
-   * 
-   * Should the window autoclose when the terminal complete
-   * 
-   * Since: 0.1.0
-   */
-  pspecs[PROP_CLOSE_ON_ZERO] =
-    g_param_spec_boolean ("close-on-zero", "Close on zero",
-                          "Should close when child exits with 0",
-                          TRUE,
-                          G_PARAM_READWRITE);
+  pspecs[PROP_APPLICATION] =
+    g_param_spec_object ("application", "Application",
+                         "The application the window is part of",
+                         KGX_TYPE_APPLICATION,
+                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
 
   g_object_class_install_properties (object_class, LAST_PROP, pspecs);
 
   gtk_widget_class_set_template_from_resource (widget_class,
-                                               RES_PATH "kgx-window.ui");
+                                               KGX_APPLICATION_PATH "kgx-window.ui");
 
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, header_bar);
-  gtk_widget_class_bind_template_child (widget_class, KgxWindow, terminal);
-  gtk_widget_class_bind_template_child (widget_class, KgxWindow, dims);
-  gtk_widget_class_bind_template_child (widget_class, KgxWindow, search_entry);
-  gtk_widget_class_bind_template_child (widget_class, KgxWindow, search_bar);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, exit_info);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, exit_message);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, zoom_level);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, about_item);
+  gtk_widget_class_bind_template_child (widget_class, KgxWindow, tab_bar);
+  gtk_widget_class_bind_template_child (widget_class, KgxWindow, tab_button);
+  gtk_widget_class_bind_template_child (widget_class, KgxWindow, tab_switcher);
+  gtk_widget_class_bind_template_child (widget_class, KgxWindow, pages);
 
-  gtk_widget_class_bind_template_callback (widget_class, application_set);
   gtk_widget_class_bind_template_callback (widget_class, active_changed);
+  gtk_widget_class_bind_template_callback (widget_class, key_press_event);
 
-  gtk_widget_class_bind_template_callback (widget_class, search_enabled);
-  gtk_widget_class_bind_template_callback (widget_class, search_changed);
-  gtk_widget_class_bind_template_callback (widget_class, search_next);
-  gtk_widget_class_bind_template_callback (widget_class, search_prev);
-
-  gtk_widget_class_bind_template_callback (widget_class, font_increase);
-  gtk_widget_class_bind_template_callback (widget_class, font_decrease);
-  gtk_widget_class_bind_template_callback (widget_class, font_scaled);
-
-  gtk_widget_class_bind_template_callback (widget_class, size_changed);
+  gtk_widget_class_bind_template_callback (widget_class, zoom);
+  gtk_widget_class_bind_template_callback (widget_class, status_changed);
+  gtk_widget_class_bind_template_callback (widget_class, extra_drag_data_received);
+  gtk_widget_class_bind_template_callback (widget_class, new_tab_cb);
 }
+
 
 static void
 new_activated (GSimpleAction *action,
                GVariant      *parameter,
                gpointer       data)
 {
-  GtkWindow       *window = NULL;
-  GtkApplication  *app = NULL;
-  guint32          timestamp;
-  g_autofree char *dir = NULL;
+  KgxWindow *self = data;
+  guint32 timestamp = GDK_CURRENT_TIME;
+  GtkApplication *application = NULL;
+  g_autoptr (GFile) dir = NULL;
 
-  /* Slightly "wrong" but hopefully by taking the time before
-   * we spend non-zero time initing the window it's far enough in the
-   * past for shell to do-the-right-thing
-   */
-  timestamp = GDK_CURRENT_TIME;
-
-  app = gtk_window_get_application (GTK_WINDOW (data));
-
+  application = gtk_window_get_application (GTK_WINDOW (self));
   dir = kgx_window_get_working_dir (KGX_WINDOW (data));
 
-  window = g_object_new (KGX_TYPE_WINDOW,
-                        "application", app,
-                        "initial-work-dir", dir,
-                        "close-on-zero", TRUE,
-                        NULL);
-
-  gtk_window_present_with_time (window, timestamp);
+  kgx_application_add_terminal (KGX_APPLICATION (application),
+                                NULL,
+                                timestamp,
+                                dir,
+                                NULL,
+                                NULL);
 }
+
+
+static void
+new_tab_activated (GSimpleAction *action,
+                   GVariant      *parameter,
+                   gpointer       data)
+{
+  KgxWindow *self = data;
+  guint32 timestamp = GDK_CURRENT_TIME;
+  GtkApplication *application = NULL;
+  g_autoptr (GFile) dir = NULL;
+
+  application = gtk_window_get_application (GTK_WINDOW (self));
+  dir = kgx_window_get_working_dir (KGX_WINDOW (data));
+
+  kgx_application_add_terminal (KGX_APPLICATION (application),
+                                self,
+                                timestamp,
+                                dir,
+                                NULL,
+                                NULL);
+}
+
+
+static void
+close_tab_activated (GSimpleAction *action,
+                     GVariant      *parameter,
+                     gpointer       data)
+{
+  KgxWindow *self = data;
+
+  kgx_pages_close_page (KGX_PAGES (self->pages));
+}
+
+
+static void
+detach_tab_activated (GSimpleAction *action,
+                      GVariant      *parameter,
+                      gpointer       data)
+{
+  KgxWindow *self = data;
+
+  kgx_pages_detach_page (KGX_PAGES (self->pages));
+}
+
 
 static void
 about_activated (GSimpleAction *action,
@@ -723,73 +513,74 @@ about_activated (GSimpleAction *action,
   const char *authors[] = { "Zander Brown <zbrown@gnome.org>", NULL };
   const char *artists[] = { "Tobias Bernard", NULL };
   g_autofree char *copyright = NULL;
-  
-  copyright = g_strdup_printf (_("Copyright © %s Zander Brown"),
-                               "2019");
+
+  /* Translators: %s is the year range */
+  copyright = g_strdup_printf (_("© %s Zander Brown"), "2019-2021");
 
   gtk_show_about_dialog (GTK_WINDOW (data),
                          "authors", authors,
                          "artists", artists,
-                         // Translators: Credit yourself here
+                         /* Translators: Credit yourself here */
                          "translator-credits", _("translator-credits"),
+                         #if IS_GENERIC
+                         /* Translators: Don’t attempt to translate KGX,
+                          * treat it as a proper noun */
+                         "comments", _("KGX Terminal Emulator"),
+                         #else
                          "comments", _("Terminal Emulator"),
+                         #endif
                          "copyright", copyright,
                          "license-type", GTK_LICENSE_GPL_3_0,
                          "logo-icon-name", "kgx-original",
-                         #if IS_GENERIC
-                         // Translators: "by King’s Cross" here is meaning
-                         // author or creator of 'Terminal'
-                         "program-name", _("Terminal (King’s Cross)"),
-                         #else
-                         "program-name", _("King’s Cross"),
-                         #endif
+                         "program-name", KGX_DISPLAY_NAME,
                          "version", PACKAGE_VERSION,
                          NULL);
 }
 
-static void
-zoom_out_activated (GSimpleAction *action,
-                    GVariant      *parameter,
-                    gpointer       data)
-{
-  KgxWindow *self = KGX_WINDOW (data);
-  VteTerminal *term = VTE_TERMINAL (self->terminal);
-  gdouble current = vte_terminal_get_font_scale (term);
-
-  vte_terminal_set_font_scale (term, current - 0.1);
-}
 
 static void
-zoom_normal_activated (GSimpleAction *action,
-                       GVariant      *parameter,
-                       gpointer       data)
+tab_switcher_activated (GSimpleAction *action,
+                        GVariant      *parameter,
+                        gpointer       data)
 {
-  KgxWindow *self = KGX_WINDOW (data);
-  VteTerminal *term = VTE_TERMINAL (self->terminal);
+  KgxWindow *self = data;
 
-  vte_terminal_set_font_scale (term, 1.0);
+  kgx_tab_switcher_open (KGX_TAB_SWITCHER (self->tab_switcher));
 }
 
-static void
-zoom_in_activated (GSimpleAction *action,
-                   GVariant      *parameter,
-                   gpointer       data)
-{
-  KgxWindow *self = KGX_WINDOW (data);
-  VteTerminal *term = VTE_TERMINAL (self->terminal);
-  gdouble current = vte_terminal_get_font_scale (term);
 
-  vte_terminal_set_font_scale (term, current + 0.1);
-}
-
-static GActionEntry win_entries[] =
-{
+static GActionEntry win_entries[] = {
   { "new-window", new_activated, NULL, NULL, NULL },
+  { "new-tab", new_tab_activated, NULL, NULL, NULL },
+  { "close-tab", close_tab_activated, NULL, NULL, NULL },
   { "about", about_activated, NULL, NULL, NULL },
-  { "zoom-out", zoom_out_activated, NULL, NULL, NULL },
-  { "zoom-normal", zoom_normal_activated, NULL, NULL, NULL },
-  { "zoom-in", zoom_in_activated, NULL, NULL, NULL },
+  { "tab-switcher", tab_switcher_activated, NULL, NULL, NULL },
 };
+
+
+static GActionEntry tab_entries[] = {
+  { "close", close_tab_activated, NULL, NULL, NULL },
+  { "detach", detach_tab_activated, NULL, NULL, NULL },
+};
+
+
+static gboolean
+update_title (GBinding     *binding,
+              const GValue *from_value,
+              GValue       *to_value,
+              gpointer      data)
+{
+  const char *title = g_value_get_string (from_value);
+
+  if (!title) {
+    title = KGX_DISPLAY_NAME;
+  }
+
+  g_value_set_string (to_value, title);
+
+  return TRUE;
+}
+
 
 static gboolean
 update_subtitle (GBinding     *binding,
@@ -799,16 +590,13 @@ update_subtitle (GBinding     *binding,
 {
   g_autoptr (GFile) file = NULL;
   g_autofree char *path = NULL;
-  const char *uri;
   const char *home = NULL;
 
-  uri = g_value_get_string (from_value);
-  if (uri == NULL) {
+  file = g_value_dup_object (from_value);
+  if (file == NULL) {
     g_value_set_string (to_value, NULL);
     return TRUE;
   }
-
-  file = g_file_new_for_uri (uri);
 
   path = g_file_get_path (file);
   if (path == NULL) {
@@ -832,10 +620,16 @@ update_subtitle (GBinding     *binding,
   return TRUE;
 }
 
+
 static void
 kgx_window_init (KgxWindow *self)
 {
+  g_autoptr (GtkWindowGroup) group = NULL;
+  g_autoptr (GtkTargetList) target_list = NULL;
   GPropertyAction *pact;
+
+  g_type_ensure (KGX_TYPE_TAB_BUTTON);
+  g_type_ensure (KGX_TYPE_TAB_SWITCHER);
 
   gtk_widget_init_template (GTK_WIDGET (self));
 
@@ -850,189 +644,109 @@ kgx_window_init (KgxWindow *self)
                                    G_N_ELEMENTS (win_entries),
                                    self);
 
-  update_actions (self);
-
   self->theme = KGX_THEME_NIGHT;
-  self->close_on_zero = TRUE;
-
-  self->root = g_hash_table_new (g_direct_hash, g_direct_equal);
-  self->remote = g_hash_table_new (g_direct_hash, g_direct_equal);
-  self->children = g_hash_table_new_full (g_direct_hash,
-                                          g_direct_equal,
-                                          NULL,
-                                          (GDestroyNotify) kgx_process_unref);
-
-  pact = g_property_action_new ("theme", G_OBJECT (self), "theme");
-  g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (pact));
 
   pact = g_property_action_new ("find",
-                                G_OBJECT (self->search_bar),
+                                G_OBJECT (self->pages),
                                 "search-mode-enabled");
   g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (pact));
 
-  g_object_bind_property_full (self->terminal, "current-directory-uri",
+  g_object_bind_property_full (self->pages, "title",
+                               self, "title",
+                               G_BINDING_SYNC_CREATE,
+                               update_title,
+                               NULL, NULL, NULL);
+
+  g_object_bind_property (self, "title",
+                          self->header_bar, "title",
+                          G_BINDING_SYNC_CREATE);
+
+  g_object_bind_property_full (self->pages, "path",
                                self->header_bar, "subtitle",
                                G_BINDING_SYNC_CREATE,
                                update_subtitle,
                                NULL, NULL, NULL);
 
-  g_object_bind_property (self, "theme",
-                          self->terminal, "theme",
-                          G_BINDING_SYNC_CREATE | G_BINDING_BIDIRECTIONAL);
-
-  g_object_bind_property (self, "is-maximized",
-                          self->terminal, "opaque",
+  g_object_bind_property (self->pages, "tab-view",
+                          self->tab_bar, "view",
+                          G_BINDING_SYNC_CREATE);
+  g_object_bind_property (self->pages, "tab-view",
+                          self->tab_button, "view",
+                          G_BINDING_SYNC_CREATE);
+  g_object_bind_property (self->pages, "tab-view",
+                          self->tab_switcher, "view",
                           G_BINDING_SYNC_CREATE);
 
-  hdy_search_bar_connect_entry (HDY_SEARCH_BAR (self->search_bar),
-                                GTK_ENTRY (self->search_entry));
+  target_list = gtk_target_list_new (NULL, 0);
+  gtk_target_list_add_text_targets (target_list, 0);
+
+  hdy_tab_bar_set_extra_drag_dest_targets (HDY_TAB_BAR (self->tab_bar),
+                                           target_list);
+
+  group = gtk_window_group_new ();
+  gtk_window_group_add_window (group, GTK_WINDOW (self));
+
+  kgx_pages_set_shortcut_widget (KGX_PAGES (self->pages), GTK_WIDGET (self));
+
+  self->tab_actions = G_ACTION_MAP (g_simple_action_group_new ());
+  g_action_map_add_action_entries (self->tab_actions,
+                                   tab_entries,
+                                   G_N_ELEMENTS (tab_entries),
+                                   self);
+  gtk_widget_insert_action_group (GTK_WIDGET (self),
+                                  "tab",
+                                  G_ACTION_GROUP (self->tab_actions));
 }
+
 
 /**
  * kgx_window_get_working_dir:
  * @self: the #KgxWindow
- * 
+ *
  * Get the working directory path of this window, used to open new windows
  * in the same directory
- * 
- * Since: 0.1.0
+ *
+ * Since: 0.4.0
  */
-char *
+GFile *
 kgx_window_get_working_dir (KgxWindow *self)
 {
-  const char *uri;
-  g_autoptr (GFile) file = NULL;
+  GFile *file = NULL;
 
   g_return_val_if_fail (KGX_IS_WINDOW (self), NULL);
 
-  uri = vte_terminal_get_current_directory_uri (VTE_TERMINAL (self->terminal));
-  file = g_file_new_for_uri (uri);
+  g_object_get (self->pages, "path", &file, NULL);
 
-  return g_file_get_path (file);
+  return file;
 }
 
-#if HAS_GTOP
-static inline void
-push_type (GHashTable      *table,
-           GPid             pid,
-           KgxProcess      *process,
-           GtkStyleContext *context,
-           const char      *class_name)
-{
-  g_hash_table_insert (table,
-                       GINT_TO_POINTER (pid),
-                       process != NULL ? g_rc_box_acquire (process) : NULL);
-
-  g_debug ("Now %i %s", g_hash_table_size (table), class_name);
-
-  if (G_LIKELY (class_name != NULL)) {
-    gtk_style_context_add_class (context, class_name);
-  }
-}
-#endif
 
 /**
- * kgx_window_push_child:
+ * kgx_window_get_pages:
  * @self: the #KgxWindow
- * @process: the #KgxProcess of the remote process
- * 
- * Registers @pid as a child of @self
- * 
- * Since: 0.2.0
+ *
+ * Get the tabbed widget inside @self
+ *
+ * Since: 0.3.0
  */
-void
-kgx_window_push_child (KgxWindow    *self,
-                       KgxProcess   *process)
+KgxPages *
+kgx_window_get_pages (KgxWindow *self)
 {
-  #if HAS_GTOP
-  GtkStyleContext *context;
-  GPid pid = 0;
-  const char *exec = NULL;
+  g_return_val_if_fail (KGX_IS_WINDOW (self), NULL);
 
-  g_return_if_fail (KGX_IS_WINDOW (self));
-
-  context = gtk_widget_get_style_context (GTK_WIDGET (self));
-  pid = kgx_process_get_pid (process);
-  exec = kgx_process_get_exec (process);
-
-  if (G_UNLIKELY (g_str_has_prefix (exec, "ssh "))) {
-    push_type (self->remote, pid, NULL, context, KGX_WINDOW_STYLE_REMOTE);
-  }
-
-  if (G_UNLIKELY (kgx_process_get_is_root (process))) {
-    push_type (self->root, pid, NULL, context, KGX_WINDOW_STYLE_ROOT);
-  }
-
-  push_type (self->children, pid, process, context, NULL);
-  #endif
+  return KGX_PAGES (self->pages);
 }
 
-inline static void
-pop_type (GHashTable      *table,
-          GPid             pid,
-          GtkStyleContext *context,
-          const char      *class_name)
-{
-  guint size = 0;
 
-  g_hash_table_remove (table, GINT_TO_POINTER (pid));
-
-  size = g_hash_table_size (table);
-
-  if (G_LIKELY (size <= 0)) {
-    if (G_LIKELY (class_name)) {
-      gtk_style_context_remove_class (context, class_name);
-    }
-    g_debug ("No longer %s", class_name);
-  } else {
-    g_debug ("%i %s remaining", size, class_name);
-  }
-}
-
-/**
- * kgx_window_pop_child:
- * @self: the #KgxWindow
- * @process: the #KgxProcess of the child process
- * 
- * Remove a child added with kgx_window_push_child()
- * 
- * Since: 0.2.0
- */
 void
-kgx_window_pop_child (KgxWindow    *self,
-                      KgxProcess   *process)
+kgx_window_get_size (KgxWindow *self,
+                     int       *width,
+                     int       *height)
 {
-  GtkStyleContext *context;
-  GPid pid = 0;
-  guint id = 0;
-
   g_return_if_fail (KGX_IS_WINDOW (self));
 
-  context = gtk_widget_get_style_context (GTK_WIDGET (self));
-  #if HAS_GTOP
-  pid = kgx_process_get_pid (process);
-  #endif
-  
-  pop_type (self->remote, pid, context, KGX_WINDOW_STYLE_REMOTE);
-  pop_type (self->root, pid, context, KGX_WINDOW_STYLE_ROOT);
-  pop_type (self->children, pid, context, NULL);
-  
-  if (!gtk_window_is_active (GTK_WINDOW (self))) {
-    g_autoptr (GNotification) noti = NULL;
-    GtkApplication *app = gtk_window_get_application (GTK_WINDOW (self));
-
-    noti = g_notification_new (_("Command completed"));
-    #if HAS_GTOP
-    g_notification_set_body (noti, kgx_process_get_exec (process));
-    #endif
-    id = gtk_application_window_get_id (GTK_APPLICATION_WINDOW (self));
-    g_notification_set_default_action_and_target (noti,
-                                                  "app.focus-window",
-                                                  "u",
-                                                  id);
-
-    g_application_send_notification (G_APPLICATION (app),
-                                     self->notification_id,
-                                     noti);
-  }
+  if (width)
+    *width = self->current_width;
+  if (height)
+    *height = self->current_height;
 }

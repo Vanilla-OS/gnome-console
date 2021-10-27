@@ -19,32 +19,16 @@
 #pragma once
 
 #include <gtk/gtk.h>
-#include <vte/vte.h>
-#define HANDY_USE_UNSTABLE_API
-#include <handy.h>
+#include "kgx-enums.h"
 
 G_BEGIN_DECLS
 
-#define KGX_TYPE_CLOSE_DIALOG (kgx_close_dialog_get_type())
+typedef enum {
+  KGX_CONTEXT_WINDOW,
+  KGX_CONTEXT_TAB,
+} KgxCloseDialogContext;
 
-/**
- * KgxCloseDialog:
- * @list: the #GtkListBox that #KgxCloseDialogRow s are added to
- * 
- * Stability: Private
- */
-struct _KgxCloseDialog
-{
-  /*< private >*/
-  HdyDialog parent_instance;
-
-  /*< public >*/
-  GtkWidget *list;
-};
-
-G_DECLARE_FINAL_TYPE (KgxCloseDialog, kgx_close_dialog, KGX, CLOSE_DIALOG, HdyDialog)
-
-void kgx_close_dialog_add_command (KgxCloseDialog *self,
-                                   const char     *command);
+GtkWidget *kgx_close_dialog_new (KgxCloseDialogContext  context,
+                                 GPtrArray             *commands);
 
 G_END_DECLS

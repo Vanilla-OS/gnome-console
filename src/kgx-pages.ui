@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk+" version="3.20"/>
+  <template class="KgxPages" parent="GtkBin">
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkOverlay">
+        <property name="visible">True</property>
+        <child>
+          <object class="HdyTabView" id="view">
+            <property name="visible">True</property>
+            <property name="menu-model">tab-menu</property>
+            <property name="default-icon">view_default_icon</property>
+            <signal name="notify::selected-page" handler="page_changed" swapped="no"/>
+            <signal name="page-attached" handler="page_attached" swapped="no"/>
+            <signal name="page-detached" handler="page_detached" swapped="no"/>
+            <signal name="create-window" handler="create_window" swapped="no"/>
+            <signal name="close-page" handler="close_page" swapped="no"/>
+            <signal name="setup-menu" handler="setup_menu" swapped="no"/>
+          </object>
+        </child>
+        <child type="overlay">
+          <object class="GtkRevealer" id="status_revealer">
+            <property name="visible">False</property>
+            <property name="halign">end</property>
+            <property name="valign">end</property>
+            <property name="transition-type">crossfade</property>
+            <signal name="notify::child-revealed" handler="check_revealer" swapped="no"/>
+            <child>
+              <object class="GtkLabel" id="status">
+                <property name="visible">True</property>
+                <property name="label">WxH</property>
+                <style>
+                  <class name="floating-bar"/>
+                  <class name="numeric"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+  <menu id="tab-menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Detach Tab</attribute>
+        <attribute name="action">tab.detach</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Close</attribute>
+        <attribute name="action">tab.close</attribute>
+      </item>
+    </section>
+  </menu>
+  <object class="GThemedIcon" id="view_default_icon">
+    <property name="name">status-regular-symbolic</property>
+  </object>
+</interface>

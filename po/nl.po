@@ -1,0 +1,360 @@
+# Dutch translation for kgx.
+# Copyright (C) 2020 kgx's COPYRIGHT HOLDER
+# This file is distributed under the same license as the kgx package.
+# Nathan Follens <nfollens@gnome.org>, 2020-2021.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: kgx master\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/ZanderBrown/kgx/issues\n"
+"POT-Creation-Date: 2021-06-14 11:32+0000\n"
+"PO-Revision-Date: 2021-09-07 14:39+0200\n"
+"Last-Translator: Nathan Follens <nfollens@gnome.org>\n"
+"Language-Team: Dutch <gnome-nl-list@gnome.org>\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.0\n"
+
+#. Translators: This is a train station, see README.md for more info
+#: data/org.gnome.zbrown.KingsCross.desktop.in.in:4
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:8
+#: src/kgx-application.c:512 src/kgx-application.h:46 src/kgx-window.ui:100
+msgid "King’s Cross"
+msgstr "King’s Cross"
+
+#. Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+#: data/org.gnome.zbrown.KingsCross.desktop.in.in:9
+#: data/org.gnome.zbrown.KingsCross-generic.desktop.in.in:8
+msgid "command;prompt;cmd;commandline;run;shell;terminal;kgx;kings cross;"
+msgstr ""
+"command;prompt;cmd;commandline;run;shell;terminal;kgx;kings cross;"
+"opdrachtregel;opdrachtlijn;commandoregel;commandolijn;"
+
+#: data/org.gnome.zbrown.KingsCross.desktop.in.in:20
+#: data/org.gnome.zbrown.KingsCross-generic.desktop.in.in:19
+msgid "New Window"
+msgstr "Nieuw venster"
+
+#: data/org.gnome.zbrown.KingsCross.desktop.in.in:26
+#: data/org.gnome.zbrown.KingsCross-generic.desktop.in.in:25
+#: src/kgx-window.ui:144
+msgid "New Tab"
+msgstr "Nieuw tabblad"
+
+#: data/org.gnome.zbrown.KingsCross-generic.desktop.in.in:3
+#: src/kgx-application.h:44
+msgid "Terminal"
+msgstr "Terminal"
+
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:9
+#: src/kgx-application.c:514 src/kgx-window.c:512
+msgid "Terminal Emulator"
+msgstr "Terminal-emulator"
+
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:11
+msgid "A simple user-friendly terminal emulator for the GNOME desktop."
+msgstr ""
+"Een eenvoudige en gebruiksvriendelijke terminal-emulator voor het Gnome-"
+"bureaublad."
+
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:22
+msgid "Terminal window"
+msgstr "Terminalvenster"
+
+#: data/org.gnome.zbrown.KingsCross.appdata.xml.in.in:52
+msgid "Zander Brown"
+msgstr "Zander Brown"
+
+#: src/help-overlay.ui:13
+msgctxt "shortcut window"
+msgid "Application"
+msgstr "Toepassing"
+
+#: src/help-overlay.ui:19
+msgctxt "shortcut window"
+msgid "New Window"
+msgstr "Nieuw venster"
+
+#: src/help-overlay.ui:26
+msgctxt "shortcut window"
+msgid "Terminal"
+msgstr "Terminal"
+
+#: src/help-overlay.ui:32
+msgctxt "shortcut window"
+msgid "Find"
+msgstr "Zoeken"
+
+#: src/help-overlay.ui:39
+msgctxt "shortcut window"
+msgid "Copy"
+msgstr "Kopiëren"
+
+#: src/help-overlay.ui:46
+msgctxt "shortcut window"
+msgid "Paste"
+msgstr "Plakken"
+
+#: src/help-overlay.ui:53
+msgctxt "shortcut window"
+msgid "Tabs"
+msgstr "Tabbladen"
+
+#: src/help-overlay.ui:59
+msgctxt "shortcut window"
+msgid "New Tab"
+msgstr "Nieuw tabblad"
+
+#: src/help-overlay.ui:66
+msgctxt "shortcut window"
+msgid "Close Tab"
+msgstr "Tabblad sluiten"
+
+#: src/help-overlay.ui:73
+msgctxt "shortcut window"
+msgid "Next Tab"
+msgstr "Volgend tabblad"
+
+#: src/help-overlay.ui:80
+msgctxt "shortcut window"
+msgid "Previous Tab"
+msgstr "Vorig tabblad"
+
+#: src/help-overlay.ui:87
+msgctxt "shortcut window"
+msgid "Switch to Tab"
+msgstr "Naar tabblad wisselen"
+
+#. Translators: The leading # is intentional, the initial %s is the
+#. version of KGX itself, the latter format is the VTE version
+#: src/kgx-application.c:486
+#, c-format
+msgid "# KGX %s using VTE %u.%u.%u %s\n"
+msgstr "# KGX %s met VTE %u.%u.%u %s\n"
+
+#. Translators: %s is the year range
+#: src/kgx-application.c:498 src/kgx-window.c:500
+#, c-format
+msgid "© %s Zander Brown"
+msgstr "© %s Zander Brown"
+
+#: src/kgx-application.c:516
+msgid "GPL 3.0 or later"
+msgstr "GPL 3.0 of later"
+
+#: src/kgx-application.c:647
+msgid "Execute the argument to this option inside the terminal"
+msgstr "Voer het argument bij deze optie in de terminal uit"
+
+#: src/kgx-application.c:656
+msgid "Set the working directory"
+msgstr "Stel de werkmap in"
+
+#. Translators: Placeholder of for a given directory
+#: src/kgx-application.c:658
+msgid "DIRNAME"
+msgstr "MAPNAAM"
+
+#: src/kgx-application.c:666
+msgid "Wait until the child exits (TODO)"
+msgstr "Wachten tot het onderliggend proces afsluit (TODO)"
+
+#: src/kgx-application.c:675
+msgid "Set the initial window title"
+msgstr "Stel de initiële venstertitel in"
+
+#: src/kgx-application.c:684
+msgid "ADVANCED: Set the shell to launch"
+msgstr "GEAVANCEERD: stel de uit te voeren shell in"
+
+#: src/kgx-application.c:693
+msgid "ADVANCED: Set the scrollback length"
+msgstr "GEAVANCEERD: stel de terugschuiflengte in"
+
+#: src/kgx-close-dialog.c:52
+msgid "Close Window?"
+msgstr "Venster sluiten?"
+
+#: src/kgx-close-dialog.c:53
+msgid ""
+"Some commands are still running, closing this window will kill them and may "
+"lead to unexpected outcomes"
+msgstr ""
+"Er worden nog enkele opdrachten uitgevoerd, dit venster sluiten zal ze "
+"onmiddellijk beëindigen en kan tot onverwachte resultaten leiden"
+
+#: src/kgx-close-dialog.c:58
+msgid "Close Tab?"
+msgstr "Tabblad sluiten?"
+
+#: src/kgx-close-dialog.c:59
+msgid ""
+"Some commands are still running, closing this tab will kill them and may "
+"lead to unexpected outcomes"
+msgstr ""
+"Er worden nog enkele opdrachten uitgevoerd, dit tabblad sluiten zal ze "
+"onmiddellijk beëindigen en kan tot onverwachte resultaten leiden"
+
+#: src/kgx-close-dialog.ui:24 src/kgx-terminal.c:675
+msgid "_Cancel"
+msgstr "Annu_leren"
+
+#: src/kgx-close-dialog.ui:32
+msgid "C_lose"
+msgstr "S_luiten"
+
+#: src/kgx-pages.ui:46
+msgid "_Detach Tab"
+msgstr "Tabbla_d losmaken"
+
+#: src/kgx-pages.ui:52
+msgid "_Close"
+msgstr "_Sluiten"
+
+#. translators: <b> </b> marks the text as bold, ensure they are
+#. matched please!
+#: src/kgx-simple-tab.c:119
+#, c-format
+msgid "<b>Read Only</b> — Command exited with code %i"
+msgstr "<b>Alleen-lezen</b> — opdracht afgesloten met code %i"
+
+#. translators: <b> </b> marks the text as bold, ensure they are
+#. matched please!
+#: src/kgx-simple-tab.c:128
+msgid "<b>Read Only</b> — Command exited"
+msgstr "<b>Alleen-lezen</b> — Opdracht afgesloten"
+
+#. translators: <b> </b> marks the text as bold, ensure they are
+#. matched please!
+#: src/kgx-simple-tab.c:160
+#, c-format
+msgid "<b>Failed to start</b> — %s"
+msgstr "<b>Starten mislukt</b> — %s"
+
+#: src/kgx-tab.c:1182
+msgid "Command completed"
+msgstr "Opdracht voltooid"
+
+#: src/kgx-terminal.c:667
+msgid "You are pasting a command that runs as an administrator"
+msgstr "U plakt een opdracht die uitgevoerd wordt met beheerdersrechten"
+
+#. TRANSLATORS: %s is the command being pasted
+#: src/kgx-terminal.c:670
+#, c-format
+msgid ""
+"Make sure you know what the command does:\n"
+"%s"
+msgstr ""
+"Zorg ervoor dat u zeker weet wat de opdracht doet:\n"
+"%s"
+
+#: src/kgx-terminal.c:678 src/menus.ui:24
+msgid "_Paste"
+msgstr "_Plakken"
+
+#. Translators: Credit yourself here
+#: src/kgx-window.c:506
+msgid "translator-credits"
+msgstr ""
+"Nathan Follens <nfollens@gnome.org>\n"
+"\n"
+"Meer info over Gnome-NL https://nl.gnome.org"
+
+#. Translators: Don’t attempt to translate KGX,
+#. * treat it as a proper noun
+#: src/kgx-window.c:510
+msgid "KGX Terminal Emulator"
+msgstr "KGX-terminal-emulator"
+
+#: src/kgx-window.c:605
+msgid "_About Terminal"
+msgstr "_Over Terminal"
+
+#: src/kgx-window.ui:20
+msgid "Shrink text"
+msgstr "Tekst verkleinen"
+
+#: src/kgx-window.ui:33
+msgid "Reset size"
+msgstr "Originele grootte herstellen"
+
+#: src/kgx-window.ui:46
+msgid "Enlarge text"
+msgstr "Tekst vergroten"
+
+#: src/kgx-window.ui:63
+msgid "_New Window"
+msgstr "_Nieuw venster"
+
+#: src/kgx-window.ui:75
+msgid "_Keyboard Shortcuts"
+msgstr "Snel_toetsen"
+
+#: src/kgx-window.ui:82
+msgid "_About King’s Cross"
+msgstr "_Over King’s Cross"
+
+#: src/kgx-window.ui:83
+msgid "About this program"
+msgstr "Over dit programma"
+
+#: src/kgx-window.ui:108
+msgid "Find in terminal"
+msgstr "Zoeken in terminal"
+
+#: src/kgx-window.ui:126
+msgid "Menu"
+msgstr "Menu"
+
+#: src/menus.ui:7
+msgid "_Open Link"
+msgstr "Verwijzing _openen"
+
+#: src/menus.ui:12
+msgid "Copy _Link"
+msgstr "Verwijzing _kopiëren"
+
+#: src/menus.ui:19
+msgid "_Copy"
+msgstr "_Kopiëren"
+
+#: src/menus.ui:29
+msgid "_Select All"
+msgstr "Alles _selecteren"
+
+#: src/menus.ui:36
+msgid "Show in _Files"
+msgstr "Tonen in _Bestanden"
+
+#: nautilus/kgx-nautilus-menu-item.c:120
+msgid "Open in T_erminal"
+msgstr "Openen in t_erminal"
+
+#: nautilus/kgx-nautilus-menu-item.c:122
+msgid "Op_en in King’s Cross"
+msgstr "Op_enen in King’s Cross"
+
+#: nautilus/kgx-nautilus-menu-item.c:124
+msgid "Start a terminal session for this location"
+msgstr "Terminalsessie starten vanaf deze locatie"
+
+#~ msgid "command;prompt;cmd;commandline;run;shell;terminal;kgx;"
+#~ msgstr ""
+#~ "command;prompt;cmd;commandline;run;shell;terminal;kgx;opdrachtregel;"
+#~ "opdrachtlijn;commandoregel;commandolijn;"
+
+#~ msgid "child watcher"
+#~ msgstr "Onderliggendproceswaarnemer"
+
+#~ msgid "Copyright © %s Zander Brown"
+#~ msgstr "Copyright © %s Zander Brown"
+
+#~ msgid "Terminal (King’s Cross)"
+#~ msgstr "Terminal (King’s Cross)"
+
+#~ msgid "_OK"
+#~ msgstr "_Oké"
