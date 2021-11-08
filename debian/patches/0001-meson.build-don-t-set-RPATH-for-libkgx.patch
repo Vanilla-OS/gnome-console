@@ -1,0 +1,26 @@
+From c356c5753f2c09eb0f625886eceeb0cd30da8569 Mon Sep 17 00:00:00 2001
+From: Arnaud Ferraris <arnaud.ferraris@collabora.com>
+Date: Mon, 8 Nov 2021 12:59:16 +0100
+Subject: [PATCH] meson.build: don't set RPATH for libkgx
+
+This library is only linked to libs present in default locations,
+there's no need for a custom RPATH here.
+---
+ src/meson.build | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/meson.build b/src/meson.build
+index 217f877..a08040f 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -64,7 +64,6 @@ kgx_lib = library ('kgx', kgx_sources,
+                    dependencies: kgx_deps,
+                    install: true,
+                    install_dir: pkglibdir,
+-                   install_rpath: pkglibdir + ':' + libdir,
+                   )
+ kgx_inc = include_directories('.')
+ 
+-- 
+2.33.0
+
