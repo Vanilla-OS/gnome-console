@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<schemalist gettext-domain="kgx">
+<schemalist gettext-domain="@BIN_NAME@">
   <enum id="@KGX_APPLICATION_ID_RAW@.Theme">
+    <value nick="auto" value="0"/>
     <value nick="night" value="1"/>
-    <value nick="hacker" value="2"/>
+    <value nick="day" value="2"/>
+    <value nick="hacker" value="3"/>
   </enum>
 
   <schema id="@KGX_APPLICATION_ID_RAW@" path="@KGX_APPLICATION_PATH_RAW@">
@@ -10,7 +12,7 @@
       <default>'night'</default>
     </key>
     <key name="font-scale" type="d">
-      <range min="0.5" max="2.0"/>
+      <range min="0.5" max="4.0"/>
       <default>1.0</default>
     </key>
     <key name="shell" type="as">

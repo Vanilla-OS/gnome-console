@@ -27,19 +27,22 @@ G_BEGIN_DECLS
 
 /**
  * KgxTheme:
+ * @KGX_THEME_AUTO: Matches %KGX_THEME_DAY or %KGX_THEME_NIGHT depending on the
+ *     system preferences
  * @KGX_THEME_NIGHT: The default, public, theme
+ * @KGX_THEME_DAY: Alternate, light theme
  * @KGX_THEME_HACKER: Little easter egg theme
  *
  * Until [meson#1687](https://github.com/mesonbuild/meson/issues/1687) is
  * resolved this enum must be manually kept in sync with
  * the ‘Theme’ enum in the gschema
- *
- * Since: 0.1.0
  */
 typedef enum /*< enum,prefix=KGX >*/
 {
+  KGX_THEME_AUTO = 0,   /*< nick=auto >*/
   KGX_THEME_NIGHT = 1,  /*< nick=night >*/
-  KGX_THEME_HACKER = 2, /*< nick=hacker >*/
+  KGX_THEME_DAY = 2,    /*< nick=day >*/
+  KGX_THEME_HACKER = 3, /*< nick=hacker >*/
 } KgxTheme;
 
 /**
@@ -47,10 +50,36 @@ typedef enum /*< enum,prefix=KGX >*/
  * The number of regexs use to search for hyperlinks
  *
  * Stability: Private
- *
- * Since: 0.1.0
  */
 #define KGX_TERMINAL_N_LINK_REGEX 5
+
+
+/**
+ * KGX_FONT_SCALE_MIN:
+ * The smallest font scale/zoom
+ *
+ * Stability: Private
+ */
+#define KGX_FONT_SCALE_MIN 0.5
+
+
+/**
+ * KGX_FONT_SCALE_MAX:
+ * The largest font scale/zoom
+ *
+ * Stability: Private
+ */
+#define KGX_FONT_SCALE_MAX 4.0
+
+
+/**
+ * KGX_FONT_SCALE_DEFAULT:
+ * The standard font scale/zoom
+ *
+ * Stability: Private
+ */
+#define KGX_FONT_SCALE_DEFAULT 1.0
+
 
 #define KGX_TYPE_TERMINAL (kgx_terminal_get_type())
 
@@ -63,8 +92,6 @@ typedef enum /*< enum,prefix=KGX >*/
  * @match_id: regex ids for finding hyperlinks
  *
  * Stability: Private
- *
- * Since: 0.1.0
  */
 struct _KgxTerminal {
   /*< private >*/
@@ -81,6 +108,10 @@ struct _KgxTerminal {
 
   /* Gestures */
   GtkGesture *long_press_gesture;
+
+  /* Menus */
+  GtkWidget *menu;
+  GtkWidget *touch_menu;
 };
 
 G_DECLARE_FINAL_TYPE (KgxTerminal, kgx_terminal, KGX, TERMINAL, VteTerminal)

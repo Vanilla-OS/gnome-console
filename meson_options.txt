@@ -1,13 +1,7 @@
-
-option('gtk_doc',
+option('devel',
        type: 'boolean',
        value: false,
-       description: 'Whether to generate the API reference, you probably don\'t want this')
-
-option('generic',
-       type: 'boolean',
-       value: false,
-       description: 'Present using the generic name "Terminal"')
+       description: 'Produce a parallel installable development build')
 
 option('tests',
        type: 'boolean',

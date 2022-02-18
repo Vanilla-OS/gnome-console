@@ -37,6 +37,7 @@ struct _KgxProcess {
   GPid    pid;
   GPid    parent;
   gint32  uid;
+  gint32  euid;
   char   *exec;
 };
 
@@ -53,8 +54,6 @@ clear_process (KgxProcess *self)
  * Reduce the refrence count of @self, possibly freeing @self
  *
  * See g_rc_box_acquire() and g_rc_box_release_full()
- *
- * Since: 0.1.0
  *
  * Stability: Private
  */
@@ -74,8 +73,6 @@ G_DEFINE_BOXED_TYPE (KgxProcess, kgx_process, g_rc_box_acquire, kgx_process_unre
  *
  * Populate a new #KgxProcess with details about the process @pid
  *
- * Since: 0.1.0
- *
  * Stability: Private
  */
 inline KgxProcess *
@@ -92,6 +89,7 @@ kgx_process_new (GPid pid)
 
   self->parent = info.ppid;
   self->uid = info.uid;
+  self->euid = info.euid;
   self->exec = NULL;
 
   return self;
@@ -102,8 +100,6 @@ kgx_process_new (GPid pid)
  * @self: the #KgxProcess
  *
  * Returns: The process id
- *
- * Since: 0.1.0
  *
  * Stability: Private
  */
@@ -120,8 +116,6 @@ kgx_process_get_pid (KgxProcess *self)
  * @self: the #KgxProcess
  *
  * Returns: The user id of the process
- *
- * Since: 0.1.0
  *
  * Stability: Private
  */
@@ -140,15 +134,13 @@ kgx_process_get_uid (KgxProcess *self)
  * Returns: %TRUE if this process is running as root
  *
  * Stability: Private
- *
- * Since: 0.1.0
  */
 inline gboolean
 kgx_process_get_is_root (KgxProcess *self)
 {
   g_return_val_if_fail (self != NULL, FALSE);
 
-  return self->uid == 0;
+  return self->euid == 0;
 }
 
 /**
@@ -163,8 +155,6 @@ kgx_process_get_is_root (KgxProcess *self)
  * Returns: the parent #GPid
  *
  * Stability: Private
- *
- * Since: 0.1.0
  */
 inline GPid
 kgx_process_get_parent (KgxProcess *self)
@@ -181,8 +171,6 @@ kgx_process_get_parent (KgxProcess *self)
  * Get the command line used to invoke to process
  *
  * Stability: Private
- *
- * Since: 0.1.0
  */
 inline const char *
 kgx_process_get_exec (KgxProcess *self)
@@ -213,8 +201,6 @@ kgx_process_get_exec (KgxProcess *self)
  * Returns: difference between @a and @b
  *
  * Stability: Private
- *
- * Since: 0.2.0
  */
 int
 kgx_pid_cmp (gconstpointer a, gconstpointer b, gpointer data)
@@ -239,8 +225,6 @@ kgx_pid_cmp (gconstpointer a, gconstpointer b, gpointer data)
  * List of processes, free with g_tree_unref()
  *
  * Stability: Private
- *
- * Since: 0.1.0
  */
 GTree *
 kgx_process_get_list (void)

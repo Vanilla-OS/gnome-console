@@ -40,12 +40,11 @@ G_BEGIN_DECLS
  */
 #define MONOSPACE_FONT_KEY_NAME "monospace-font-name"
 
-#if IS_GENERIC
-#define KGX_DISPLAY_NAME _("Terminal")
+#ifdef IS_DEVEL
+#define KGX_DISPLAY_NAME _("Console (Development)")
 #else
-#define KGX_DISPLAY_NAME _("King’s Cross")
+#define KGX_DISPLAY_NAME _("Console")
 #endif
-
 
 #define KGX_TYPE_APPLICATION (kgx_application_get_type())
 
@@ -57,7 +56,7 @@ G_BEGIN_DECLS
  * Stability: Private
  */
 struct ProcessWatch {
-  KgxTab     *page;
+  KgxTab /*weak*/ *page;
   KgxProcess *process;
 };
 
@@ -94,6 +93,8 @@ struct _KgxApplication
 
   guint                     timeout;
   int                       active;
+
+  GtkCssProvider           *provider;
 };
 
 G_DECLARE_FINAL_TYPE (KgxApplication, kgx_application, KGX, APPLICATION, GtkApplication)

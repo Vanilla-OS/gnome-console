@@ -23,11 +23,10 @@
  *
  * The main terminal widget with various features added such as a context
  * menu (via #GtkPopover) and link detection
- *
- * Since: 0.1.0
  */
 
 #include <glib/gi18n.h>
+#include <handy.h>
 #include <vte/vte.h>
 #define PCRE2_CODE_UNIT_WIDTH 0
 #include <pcre2.h>
@@ -93,17 +92,26 @@ kgx_terminal_dispose (GObject *object)
   g_clear_pointer (&self->current_url, g_free);
   g_clear_object (&self->long_press_gesture);
 
+  if (self->menu) {
+    gtk_menu_detach (GTK_MENU (self->menu));
+    self->menu = NULL;
+  }
+
+  if (self->touch_menu) {
+    gtk_popover_set_relative_to (GTK_POPOVER (self->touch_menu), NULL);
+    self->touch_menu = NULL;
+  }
+
   G_OBJECT_CLASS (kgx_terminal_parent_class)->dispose (object);
 }
 
 
 static void
-kgx_terminal_set_theme (KgxTerminal *self,
-                        KgxTheme     theme,
-                        gboolean     opaque)
+update_terminal_colors (KgxTerminal *self)
 {
+  KgxTheme resolved_theme;
   GdkRGBA fg;
-  GdkRGBA bg = (GdkRGBA) { 0.05, 0.05, 0.05, 0.96 };
+  GdkRGBA bg;
 
   // Workings of GDK_RGBA prevent this being static
   GdkRGBA palette[16] = {
@@ -125,25 +133,51 @@ kgx_terminal_set_theme (KgxTerminal *self,
     GDK_RGBA ("f6f5f4"), // Bright White
   };
 
-  if (self->theme == theme && self->opaque == opaque) {
-    return;
+  if (self->theme == KGX_THEME_AUTO) {
+    HdyStyleManager *manager = hdy_style_manager_get_default ();
+
+    if (hdy_style_manager_get_dark (manager)) {
+      resolved_theme = KGX_THEME_NIGHT;
+    } else {
+      resolved_theme = KGX_THEME_DAY;
+    }
+  } else {
+    resolved_theme = self->theme;
   }
 
-  if (opaque) {
+  switch (resolved_theme) {
+    case KGX_THEME_HACKER:
+      fg = (GdkRGBA) { 0.1, 1.0, 0.1, 1.0};
+      bg = (GdkRGBA) { 0.05, 0.05, 0.05, 0.96 };
+      break;
+    case KGX_THEME_DAY:
+      fg = (GdkRGBA) { 0.0, 0.0, 0.0, 0.0 };
+      bg = (GdkRGBA) { 1.0, 1.0, 1.0, 1.0 };
+      break;
+    case KGX_THEME_NIGHT:
+    case KGX_THEME_AUTO:
+    default:
+      fg = (GdkRGBA) { 1.0, 1.0, 1.0, 1.0};
+      bg = (GdkRGBA) { 0.05, 0.05, 0.05, 0.96 };
+      break;
+  }
+
+  if (self->opaque) {
     bg.alpha = 1.0;
   }
 
-  switch (theme) {
-    case KGX_THEME_HACKER:
-      fg = (GdkRGBA) { 0.1, 1.0, 0.1, 1.0};
-      break;
-    case KGX_THEME_NIGHT:
-    default:
-      fg = (GdkRGBA) { 1.0, 1.0, 1.0, 1.0};
-      break;
-  }
-
   vte_terminal_set_colors (VTE_TERMINAL (self), &fg, &bg, palette, 16);
+}
+
+
+static void
+kgx_terminal_set_theme (KgxTerminal *self,
+                        KgxTheme     theme,
+                        gboolean     opaque)
+{
+  if (self->theme == theme && self->opaque == opaque) {
+    return;
+  }
 
   if (self->theme != theme) {
     self->theme = theme;
@@ -154,7 +188,10 @@ kgx_terminal_set_theme (KgxTerminal *self,
     self->opaque = opaque;
     g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_OPAQUE]);
   }
+
+  update_terminal_colors (self);
 }
+
 
 static void
 kgx_terminal_set_property (GObject      *object,
@@ -240,17 +277,24 @@ have_url_under_pointer (KgxTerminal *self, GdkEvent *event)
 
 
 static void
+context_menu_detach (KgxTerminal *self,
+                     GtkMenu     *menu)
+{
+  self->menu = NULL;
+}
+
+
+static void
 context_menu (GtkWidget *widget,
               int        x,
               int        y,
+              gboolean   touch,
               GdkEvent  *event)
 {
   KgxTerminal *self = KGX_TERMINAL (widget);
   GAction *act;
-  GtkWidget *menu;
   GtkApplication *app;
   GMenu *model;
-  GdkRectangle rect = {x, y, 1, 1};
   gboolean value;
 
   value = have_url_under_pointer (self, event);
@@ -260,19 +304,50 @@ context_menu (GtkWidget *widget,
   act = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "copy-link");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (act), value);
 
-  app = GTK_APPLICATION (g_application_get_default ());
-  model = gtk_application_get_menu_by_id (app, "context-menu");
+  if (touch) {
+    GdkRectangle rect = {x, y, 1, 1};
 
-  menu = gtk_popover_new_from_model (widget, G_MENU_MODEL (model));
-  gtk_popover_set_pointing_to (GTK_POPOVER (menu), &rect);
-  gtk_popover_popup (GTK_POPOVER (menu));
+    if (!self->touch_menu) {
+      app = GTK_APPLICATION (g_application_get_default ());
+      model = gtk_application_get_menu_by_id (app, "context-menu");
+
+      self->touch_menu = gtk_popover_new_from_model (widget, G_MENU_MODEL (model));
+    }
+
+    gtk_popover_set_pointing_to (GTK_POPOVER (self->touch_menu), &rect);
+    gtk_popover_popup (GTK_POPOVER (self->touch_menu));
+  } else {
+    if (!self->menu) {
+      app = GTK_APPLICATION (g_application_get_default ());
+      model = gtk_application_get_menu_by_id (app, "context-menu");
+
+      self->menu = gtk_menu_new_from_model (G_MENU_MODEL (model));
+      gtk_style_context_add_class (gtk_widget_get_style_context (self->menu),
+                                   GTK_STYLE_CLASS_CONTEXT_MENU);
+
+      gtk_menu_attach_to_widget (GTK_MENU (self->menu), widget,
+                                 (GtkMenuDetachFunc) context_menu_detach);
+    }
+
+    if (event && gdk_event_triggers_context_menu (event)) {
+      gtk_menu_popup_at_pointer (GTK_MENU (self->menu), event);
+    } else {
+      gtk_menu_popup_at_widget (GTK_MENU (self->menu),
+                                widget,
+                                GDK_GRAVITY_SOUTH_WEST,
+                                GDK_GRAVITY_NORTH_WEST,
+                                event);
+
+      gtk_menu_shell_select_first (GTK_MENU_SHELL (self->menu), FALSE);
+    }
+  }
 }
 
 
 static gboolean
 kgx_terminal_popup_menu (GtkWidget *self)
 {
-  context_menu (self, 1, 1, NULL);
+  context_menu (self, 1, 1, FALSE, NULL);
 
   return TRUE;
 }
@@ -302,7 +377,7 @@ kgx_terminal_button_press_event (GtkWidget *widget, GdkEventButton *event)
 
   if (gdk_event_triggers_context_menu ((GdkEvent *) event) &&
       event->type == GDK_BUTTON_PRESS) {
-    context_menu (widget, event->x, event->y, (GdkEvent *) event);
+    context_menu (widget, event->x, event->y, FALSE, (GdkEvent *) event);
 
     return TRUE;
   }
@@ -345,8 +420,6 @@ kgx_terminal_class_init (KgxTerminalClass *klass)
    * Bound to #KgxApplication:theme on the #KgxApplication
    *
    * Stability: Private
-   *
-   * Since: 0.1.0
    */
   pspecs[PROP_THEME] =
     g_param_spec_enum ("theme", "Theme", "Terminal theme",
@@ -361,8 +434,6 @@ kgx_terminal_class_init (KgxTerminalClass *klass)
    * Bound to #GtkWindow:is-maximized on the #KgxWindow
    *
    * Stability: Private
-   *
-   * Since: 0.1.0
    */
   pspecs[PROP_OPAQUE] =
     g_param_spec_boolean ("opaque", "Opaque", "Terminal opaqueness",
@@ -374,8 +445,6 @@ kgx_terminal_class_init (KgxTerminalClass *klass)
    *
    *
    * Stability: Private
-   *
-   * Since: 0.3.0
    */
   pspecs[PROP_PATH] =
     g_param_spec_object ("path", "Path", "Current path",
@@ -440,7 +509,7 @@ paste_response (GtkDialog    *dlg,
   }
 
   if (response == GTK_RESPONSE_ACCEPT) {
-    vte_terminal_feed_child (paste->dest, paste->text, -1);
+    vte_terminal_paste_text (paste->dest, paste->text);
   }
 
   g_free (paste->text);
@@ -551,7 +620,7 @@ long_pressed (GtkGestureLongPress *gesture,
               gdouble              y,
               KgxTerminal         *self)
 {
-  context_menu (GTK_WIDGET (self), (int) x, (int) y, NULL);
+  context_menu (GTK_WIDGET (self), (int) x, (int) y, TRUE, NULL);
 }
 
 
@@ -601,12 +670,19 @@ size_changed (GtkWidget    *widget,
 
 
 static void
+dark_changed (KgxTerminal *self)
+{
+  if (self->theme == KGX_THEME_AUTO) {
+    update_terminal_colors (self);
+  }
+}
+
+
+static void
 kgx_terminal_init (KgxTerminal *self)
 {
   GAction *act;
   GtkGesture *gesture;
-
-  kgx_terminal_set_theme (self, KGX_THEME_NIGHT, FALSE);
 
   self->actions = G_ACTION_MAP (g_simple_action_group_new ());
   g_action_map_add_action_entries (self->actions,
@@ -667,6 +743,12 @@ kgx_terminal_init (KgxTerminal *self)
                                         self->match_id[i],
                                         "pointer");
   }
+
+  g_signal_connect_object (hdy_style_manager_get_default (),
+                           "notify::dark", G_CALLBACK (dark_changed),
+                           self, G_CONNECT_SWAPPED);
+
+  update_terminal_colors (self);
 }
 
 

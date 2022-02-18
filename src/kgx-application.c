@@ -39,6 +39,7 @@
 #include "kgx-window.h"
 #include "kgx-pages.h"
 #include "kgx-simple-tab.h"
+#include "kgx-resources.h"
 
 #define LOGO_COL_SIZE 28
 #define LOGO_ROW_SIZE 14
@@ -61,9 +62,27 @@ static void
 kgx_application_set_theme (KgxApplication *self,
                            KgxTheme        theme)
 {
+  HdyStyleManager *style_manager;
+
   g_return_if_fail (KGX_IS_APPLICATION (self));
 
   self->theme = theme;
+
+  style_manager = hdy_style_manager_get_default ();
+
+  switch (theme) {
+    case KGX_THEME_AUTO:
+      hdy_style_manager_set_color_scheme (style_manager, HDY_COLOR_SCHEME_PREFER_LIGHT);
+      break;
+    case KGX_THEME_DAY:
+      hdy_style_manager_set_color_scheme (style_manager, HDY_COLOR_SCHEME_FORCE_LIGHT);
+      break;
+    case KGX_THEME_NIGHT:
+    case KGX_THEME_HACKER:
+    default:
+      hdy_style_manager_set_color_scheme (style_manager, HDY_COLOR_SCHEME_FORCE_DARK);
+      break;
+  }
 
   g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_THEME]);
 }
@@ -77,14 +96,17 @@ kgx_application_set_scale (KgxApplication *self,
 
   g_return_if_fail (KGX_IS_APPLICATION (self));
 
-  self->scale = CLAMP (scale, 0.5, 2.0);
+  self->scale = CLAMP (scale, KGX_FONT_SCALE_MIN, KGX_FONT_SCALE_MAX);
 
   action = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-out");
-  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), self->scale > 0.5);
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
+                               self->scale > KGX_FONT_SCALE_MIN);
   action = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-normal");
-  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), self->scale != 1.0);
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
+                               self->scale != KGX_FONT_SCALE_DEFAULT);
   action = g_action_map_lookup_action (G_ACTION_MAP (self), "zoom-in");
-  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), self->scale < 2.0);
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
+                               self->scale < KGX_FONT_SCALE_MAX);
 
   g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_FONT_SCALE]);
 }
@@ -198,11 +220,20 @@ handle_watch_iter (gpointer pid,
   // There are far more processes on the system than there are children
   // of watches, thus lookup are unlikly
   if (G_UNLIKELY (watch != NULL)) {
+
+    /* If the page died we stop caring about its processes */
+    if (G_UNLIKELY (watch->page == NULL)) {
+      g_tree_remove (self->watching, GINT_TO_POINTER (parent));
+      g_tree_remove (self->children, pid);
+
+      return FALSE;
+    }
+
     if (!g_tree_lookup (self->children, pid)) {
-      struct ProcessWatch *child_watch = g_new (struct ProcessWatch, 1);
+      struct ProcessWatch *child_watch = g_new0 (struct ProcessWatch, 1);
 
       child_watch->process = g_rc_box_acquire (process);
-      child_watch->page = g_object_ref (watch->page);
+      g_set_weak_pointer (&child_watch->page, watch->page);
 
       g_debug ("Hello %i!", GPOINTER_TO_INT (pid));
 
@@ -284,11 +315,31 @@ set_watcher (KgxApplication *self, gboolean focused)
 
 
 static void
+update_styles (KgxApplication *self)
+{
+  HdyStyleManager *style_manager = hdy_style_manager_get_default ();
+  gboolean dark = hdy_style_manager_get_dark (style_manager);
+  gboolean hc = hdy_style_manager_get_high_contrast (style_manager);
+
+  if (hc && dark) {
+    gtk_css_provider_load_from_resource (self->provider, KGX_APPLICATION_PATH "styles-hc-dark.css");
+  } else if (hc) {
+    gtk_css_provider_load_from_resource (self->provider, KGX_APPLICATION_PATH "styles-hc.css");
+  } else if (dark) {
+    gtk_css_provider_load_from_resource (self->provider, KGX_APPLICATION_PATH "styles-dark.css");
+  } else {
+    gtk_css_provider_load_from_resource (self->provider, KGX_APPLICATION_PATH "styles-light.css");
+  }
+}
+
+
+static void
 kgx_application_startup (GApplication *app)
 {
-  KgxApplication *self = KGX_APPLICATION (app);
-  GtkSettings    *gtk_settings;
-  GtkCssProvider *provider;
+  KgxApplication    *self = KGX_APPLICATION (app);
+  HdyStyleManager   *style_manager;
+  g_autoptr(GAction) settings_action;
+
   const char *const new_window_accels[] = { "<shift><primary>n", NULL };
   const char *const new_tab_accels[] = { "<shift><primary>t", NULL };
   const char *const close_tab_accels[] = { "<shift><primary>w", NULL };
@@ -301,18 +352,14 @@ kgx_application_startup (GApplication *app)
 
   g_set_prgname (g_application_get_application_id (app));
 
+  g_resources_register (kgx_get_resource ());
+
   g_type_ensure (KGX_TYPE_TERMINAL);
   g_type_ensure (KGX_TYPE_PAGES);
 
   G_APPLICATION_CLASS (kgx_application_parent_class)->startup (app);
 
   hdy_init ();
-
-  gtk_settings = gtk_settings_get_default ();
-
-  g_object_set (G_OBJECT (gtk_settings),
-                "gtk-application-prefer-dark-theme", TRUE,
-                NULL);
 
   gtk_application_set_accels_for_action (GTK_APPLICATION (app),
                                          "win.new-window", new_window_accels);
@@ -338,14 +385,21 @@ kgx_application_startup (GApplication *app)
   g_settings_bind (self->settings, "font-scale", app, "font-scale", G_SETTINGS_BIND_DEFAULT);
   g_settings_bind (self->settings, "scrollback-lines", app, "scrollback-lines", G_SETTINGS_BIND_DEFAULT);
 
-  provider = gtk_css_provider_new ();
-  gtk_css_provider_load_from_resource (provider, KGX_APPLICATION_PATH "styles.css");
+  settings_action = g_settings_create_action (self->settings, "theme");
+  g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (settings_action));
+
+  self->provider = gtk_css_provider_new ();
   gtk_style_context_add_provider_for_screen (gdk_screen_get_default (),
-                                             GTK_STYLE_PROVIDER (provider),
+                                             GTK_STYLE_PROVIDER (self->provider),
                                              /* Is this stupid? Yes
                                               * Does it fix vte using the wrong
                                               * priority for fallback styles? Yes*/
                                              GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
+
+  style_manager = hdy_style_manager_get_default ();
+  g_signal_connect_swapped (style_manager, "notify::dark", G_CALLBACK (update_styles), self);
+  g_signal_connect_swapped (style_manager, "notify::high-contrast", G_CALLBACK (update_styles), self);
+  update_styles (self);
 
   set_watcher (KGX_APPLICATION (app), TRUE);
 }
@@ -566,7 +620,9 @@ kgx_application_class_init (KgxApplicationClass *klass)
 
   pspecs[PROP_FONT_SCALE] =
     g_param_spec_double ("font-scale", "Font scale", "Font scaling",
-                         0.5, 2.0, 1.0,
+                         KGX_FONT_SCALE_MIN,
+                         KGX_FONT_SCALE_MAX,
+                         KGX_FONT_SCALE_DEFAULT,
                          G_PARAM_READWRITE);
 
   /**
@@ -577,8 +633,6 @@ kgx_application_class_init (KgxApplicationClass *klass)
    * Bound to ‘scrollback-lines’ GSetting so changes persist
    *
    * Stability: Private
-   *
-   * Since: 0.4.0
    */
   pspecs[PROP_SCROLLBACK_LINES] =
     g_param_spec_int64 ("scrollback-lines", "Scrollback Lines", "Size of the scrollback",
@@ -595,7 +649,7 @@ clear_watch (struct ProcessWatch *watch)
   g_return_if_fail (watch != NULL);
 
   g_clear_pointer (&watch->process, kgx_process_unref);
-  g_clear_object (&watch->page);
+  g_clear_weak_pointer (&watch->page);
 
   g_clear_pointer (&watch, g_free);
 }
@@ -771,7 +825,7 @@ zoom_normal_activated (GSimpleAction *action,
 {
   KgxApplication *self = KGX_APPLICATION (data);
 
-  kgx_application_set_scale (self, 1.0);
+  kgx_application_set_scale (self, KGX_FONT_SCALE_DEFAULT);
 }
 
 
@@ -821,10 +875,7 @@ kgx_application_init (KgxApplication *self)
                                     NULL,
                                     NULL,
                                     (GDestroyNotify) clear_watch);
-  self->pages = g_tree_new_full (kgx_pid_cmp,
-                                 NULL,
-                                 NULL,
-                                 (GDestroyNotify) g_object_unref);
+  self->pages = g_tree_new_full (kgx_pid_cmp, NULL, NULL, NULL);
 
   self->active = 0;
   self->timeout = 0;
@@ -838,8 +889,6 @@ kgx_application_init (KgxApplication *self)
  * @page: the #KgxTab the shell is running in
  *
  * Registers a new shell process with the pid watcher
- *
- * Since: 0.3.0
  */
 void
 kgx_application_add_watch (KgxApplication *self,
@@ -853,11 +902,9 @@ kgx_application_add_watch (KgxApplication *self,
 
   watch = g_new0 (struct ProcessWatch, 1);
   watch->process = kgx_process_new (pid);
-  watch->page = g_object_ref (page);
+  g_set_weak_pointer (&watch->page, page);
 
   g_debug ("Started watching %i", pid);
-
-  g_return_if_fail (KGX_IS_TAB (watch->page));
 
   g_tree_insert (self->watching, GINT_TO_POINTER (pid), watch);
 }
@@ -953,6 +1000,15 @@ kgx_application_pop_active (KgxApplication *self)
 }
 
 
+static void
+page_died (gpointer data, GObject *dead_object)
+{
+  KgxApplication *self = KGX_APPLICATION (g_application_get_default ());
+
+  g_tree_remove (self->pages, data);
+}
+
+
 /**
  * kgx_application_add_page:
  * @self: the instance to look for @id in
@@ -962,7 +1018,7 @@ kgx_application_pop_active (KgxApplication *self)
  */
 void
 kgx_application_add_page (KgxApplication *self,
-                          KgxTab        *page)
+                          KgxTab         *page)
 {
   guint id = 0;
 
@@ -971,7 +1027,8 @@ kgx_application_add_page (KgxApplication *self,
 
   id = kgx_tab_get_id (page);
 
-  g_tree_insert (self->pages, GINT_TO_POINTER (id), g_object_ref (page));
+  g_tree_insert (self->pages, GINT_TO_POINTER (id), page);
+  g_object_weak_ref (G_OBJECT (page), page_died, GINT_TO_POINTER (id));
 }
 
 

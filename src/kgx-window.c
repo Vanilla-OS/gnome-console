@@ -22,8 +22,6 @@
  * @short_description: Window
  *
  * The main #HdyApplicationWindow that acts as the terminal
- *
- * Since: 0.1.0
  */
 
 #include "kgx-config.h"
@@ -42,6 +40,7 @@
 #include "kgx-pages.h"
 #include "kgx-tab-button.h"
 #include "kgx-tab-switcher.h"
+#include "kgx-theme-switcher.h"
 
 G_DEFINE_TYPE (KgxWindow, kgx_window, HDY_TYPE_APPLICATION_WINDOW)
 
@@ -86,13 +85,22 @@ kgx_window_constructed (GObject *object)
   KgxWindow          *self = KGX_WINDOW (object);
   g_autoptr (GError)  error = NULL;
   GtkApplication     *application = NULL;
+  HdyStyleManager    *style_manager;
 
   G_OBJECT_CLASS (kgx_window_parent_class)->constructed (object);
 
   application = gtk_window_get_application (GTK_WINDOW (self));
+  style_manager = hdy_style_manager_get_default ();
 
   g_object_bind_property (application, "theme",
                           self->pages, "theme",
+                          G_BINDING_SYNC_CREATE);
+  g_object_bind_property (application, "theme",
+                          self->theme_switcher, "theme",
+                          G_BINDING_SYNC_CREATE |
+                          G_BINDING_BIDIRECTIONAL);
+  g_object_bind_property (style_manager, "system-supports-color-schemes",
+                          self->theme_switcher, "show-system",
                           G_BINDING_SYNC_CREATE);
 
   g_object_bind_property (application, "font",
@@ -107,9 +115,10 @@ kgx_window_constructed (GObject *object)
                           self->pages, "scrollback-lines",
                           G_BINDING_SYNC_CREATE);
 
-  g_signal_connect (application,
-                    "notify::font-scale", G_CALLBACK (zoomed),
-                    self);
+  g_signal_connect_object (application,
+                           "notify::font-scale", G_CALLBACK (zoomed),
+                           self,
+                           0);
 
   update_zoom (self, KGX_APPLICATION (application));
 }
@@ -405,8 +414,6 @@ kgx_window_class_init (KgxWindowClass *klass)
    *
    * Proxy for #GtkWindow #GtkWindow:application but with %G_PARAM_CONSTRUCT,
    * simple as that
-   *
-   * Since: 0.3.0
    */
   pspecs[PROP_APPLICATION] =
     g_param_spec_object ("application", "Application",
@@ -422,8 +429,8 @@ kgx_window_class_init (KgxWindowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, header_bar);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, exit_info);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, exit_message);
+  gtk_widget_class_bind_template_child (widget_class, KgxWindow, theme_switcher);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, zoom_level);
-  gtk_widget_class_bind_template_child (widget_class, KgxWindow, about_item);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, tab_bar);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, tab_button);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, tab_switcher);
@@ -522,16 +529,9 @@ about_activated (GSimpleAction *action,
                          "artists", artists,
                          /* Translators: Credit yourself here */
                          "translator-credits", _("translator-credits"),
-                         #if IS_GENERIC
-                         /* Translators: Don’t attempt to translate KGX,
-                          * treat it as a proper noun */
-                         "comments", _("KGX Terminal Emulator"),
-                         #else
-                         "comments", _("Terminal Emulator"),
-                         #endif
                          "copyright", copyright,
                          "license-type", GTK_LICENSE_GPL_3_0,
-                         "logo-icon-name", "kgx-original",
+                         "logo-icon-name", KGX_APPLICATION_ID,
                          "program-name", KGX_DISPLAY_NAME,
                          "version", PACKAGE_VERSION,
                          NULL);
@@ -626,30 +626,31 @@ kgx_window_init (KgxWindow *self)
 {
   g_autoptr (GtkWindowGroup) group = NULL;
   g_autoptr (GtkTargetList) target_list = NULL;
-  GPropertyAction *pact;
+  g_autoptr (GPropertyAction) pact = NULL;
+  #ifdef IS_DEVEL
+  GtkStyleContext *context;
+  #endif
 
   g_type_ensure (KGX_TYPE_TAB_BUTTON);
   g_type_ensure (KGX_TYPE_TAB_SWITCHER);
+  g_type_ensure (KGX_TYPE_THEME_SWITCHER);
 
   gtk_widget_init_template (GTK_WIDGET (self));
-
-  #if IS_GENERIC
-  g_object_set (self->about_item,
-                "text", _("_About Terminal"),
-                NULL);
-  #endif
 
   g_action_map_add_action_entries (G_ACTION_MAP (self),
                                    win_entries,
                                    G_N_ELEMENTS (win_entries),
                                    self);
 
-  self->theme = KGX_THEME_NIGHT;
-
   pact = g_property_action_new ("find",
                                 G_OBJECT (self->pages),
                                 "search-mode-enabled");
   g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (pact));
+
+  #ifdef IS_DEVEL
+  context = gtk_widget_get_style_context (GTK_WIDGET (self));
+  gtk_style_context_add_class (context, "devel");
+  #endif
 
   g_object_bind_property_full (self->pages, "title",
                                self, "title",
@@ -705,8 +706,6 @@ kgx_window_init (KgxWindow *self)
  *
  * Get the working directory path of this window, used to open new windows
  * in the same directory
- *
- * Since: 0.4.0
  */
 GFile *
 kgx_window_get_working_dir (KgxWindow *self)
@@ -726,8 +725,6 @@ kgx_window_get_working_dir (KgxWindow *self)
  * @self: the #KgxWindow
  *
  * Get the tabbed widget inside @self
- *
- * Since: 0.3.0
  */
 KgxPages *
 kgx_window_get_pages (KgxWindow *self)

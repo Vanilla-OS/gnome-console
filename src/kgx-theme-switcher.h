@@ -1,6 +1,6 @@
-/* kgx-simple-tab.h
+/* kgx-theme-switcher.h
  *
- * Copyright 2019-2020 Zander Brown
+ * Copyright 2021 Purism SPC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,39 +20,10 @@
 
 #include <gtk/gtk.h>
 
-#include "kgx-tab.h"
-
 G_BEGIN_DECLS
 
-#define KGX_TYPE_SIMPLE_TAB kgx_simple_tab_get_type ()
+#define KGX_TYPE_THEME_SWITCHER (kgx_theme_switcher_get_type())
 
-/**
- * KgxSimpleTab:
- * @title: the title of the page
- * @path: the current directory of the path
- * @initial_work_dir: the directory to start in
- * @command: the root/shell command to run
- * @terminal: the #KgxTerminal
- *
- * Stability: Private
- */
-struct _KgxSimpleTab
-{
-  /*< private >*/
-  KgxTab     parent_instance;
-
-  /*< public >*/
-  char      *title;
-  GFile     *path;
-
-  char      *initial_work_dir;
-  GStrv      command;
-
-  GtkWidget *terminal;
-  GCancellable *spawn_cancellable;
-};
-
-G_DECLARE_FINAL_TYPE (KgxSimpleTab, kgx_simple_tab, KGX, SIMPLE_TAB, KgxTab)
-
+G_DECLARE_FINAL_TYPE (KgxThemeSwitcher, kgx_theme_switcher, KGX, THEME_SWITCHER, GtkBin)
 
 G_END_DECLS
