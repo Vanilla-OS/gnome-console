@@ -1,4 +1,4 @@
-Source: kgx
+Source: gnome-console
 Section: gnome
 Priority: optional
 Maintainer: DebianOnMobile Maintainers <debian-on-mobile-maintainers@alioth-lists.debian.net>
@@ -22,17 +22,28 @@ Build-Depends:
  xvfb <!nocheck>,
  xauth <!nocheck>,
 Standards-Version: 4.6.0
-Homepage: https://gitlab.gnome.org/ZanderBrown/kgx
+Homepage: https://gitlab.gnome.org/GNOME/console
 Vcs-Browser: https://salsa.debian.org/DebianOnMobile/kgx
 Vcs-Git: https://salsa.debian.org/DebianOnMobile/kgx.git
 Rules-Requires-Root: no
 
-Package: kgx
+Package: gnome-console
 Architecture: any
 Depends:
  ${misc:Depends},
  ${shlibs:Depends},
  gsettings-desktop-schemas (>= 0.1.0),
+Replaces: kgx (<< 42~beta~)
+Breaks: kgx (<< 42~beta~)
 Description: Simple user-friendly terminal emulator for the GNOME desktop
- Kings Cross is a simple terminal emulator for GNOME that adjusts nicely
+ Console is a simple terminal emulator for GNOME that adjusts nicely
  to small screen sizes and touch usage.
+
+Package: kgx
+Architecture: all
+Section: oldlibs
+Depends:
+ ${misc:Depends},
+ gnome-console,
+Description: Simple terminal emulator (transitional package)
+ This is a transitional package. It can safely be removed.
