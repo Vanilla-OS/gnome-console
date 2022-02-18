@@ -2,12 +2,6 @@
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
-ifneq ($(filter pkg.kgx.generic,$(DEB_BUILD_PROFILES)),)
-	MESON_OPTS += -Dgeneric=true
-else
-	MESON_OPTS += -Dgeneric=false
-endif
-
 ifeq ($(filter nocheck,$(DEB_BUILD_OPTIONS)),)
 	MESON_OPTS += -Dtests=true
 else
