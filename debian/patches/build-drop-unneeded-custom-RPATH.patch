@@ -1,0 +1,27 @@
+From 057e1abdfd05cb725dc0ae03455fafc7683cd55c Mon Sep 17 00:00:00 2001
+From: Arnaud Ferraris <arnaud.ferraris@collabora.com>
+Date: Tue, 22 Feb 2022 13:50:52 +0100
+Subject: [PATCH] build: drop unneeded custom RPATH
+
+`kgx` used to link to a private shared library installed under
+`/usr/lib/$ARCH/kgx`, and as a consequence needed a custom RPATH to be
+set. This library has been dropped recently, so the custom RPATH isn't
+needed anymore.
+
+Origin: upstream, https://gitlab.gnome.org/GNOME/console/-/commit/057e1abdfd05cb725dc0ae03455fafc7683cd55c
+---
+ src/meson.build | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/meson.build b/src/meson.build
+index 4b0da4e..90e78f3 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -78,5 +78,4 @@ executable(        bin_name,
+                    'main.c',
+      dependencies: kgx_dep,
+           install: true,
+-    install_rpath: pkglibdir,
+ )
+--
+GitLab
