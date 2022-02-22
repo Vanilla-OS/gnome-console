@@ -4,8 +4,7 @@ Upstream-Contact: Zander Brown <zbrown@gnome.org>
 Source: https://gitlab.gnome.org/GNOME/console
 
 Files: *
-Copyright: 2019-2020 Zander Brown <zbrown@gnome.org>
-           2019 Christian Hergert <chergert@redhat.com>
+Copyright: 2019-2022 Zander Brown <zbrown@gnome.org>
 License: GPL-3+
 
 Files: data/org.gnome.Console.metainfo.xml.in.in
@@ -18,13 +17,50 @@ License: CC-BY-SA-4.0
 
 Files: debian/*
 Copyright: 2019 Zander Brown <zbrown@gnome.org>
-           2020-2021 Arnaud Ferraris <arnaud.ferraris@gmail.com>
+           2020-2022 Arnaud Ferraris <arnaud.ferraris@gmail.com>
+License: GPL-3+
+
+Files: po/*
+Copyright: 2021 Ícar N. S. <icar.nin@protonmail.com>
+           2020-2021 Marek Černocký <marek@manet.cz>
+           2019-2021 scootergrisen
+           2020-2021 Tim Sabsch <tim@sabsch.com>
+           2020-2021 Philipp Kiemle <philipp.kiemle@gmail.com>
+           2020 Efstathios Iosifidis <eiosifidis@gnome.org>
+           2019-2022 Asier Sarasua Garmendia <asiersarasua@ni.eus>
+           2019-2021 Jiri Grönroos <jiri.gronroos@iki.fi>
+           2020 Thibault Martin <mail@thibaultmart.in>
+           2020 Fabio Tomat <f.t.public@gmail.com>
+           2022 Fran Diéguez <frandieguez@gnome.org>
+           2022 Yosef Or Boczko <yoseforb@gmail.com>
+           2020-2021 gogo <trebelnik2@gmail.com>
+           2019-2021 Balázs Úr <ur.balazs@fsf.hu>
+           2020-2021 Kukuh Syafaat <kukuhsyafaat@gnome.org>
+           2019 Antonio Pandolfo <ant.pandolfo@gmail.com>
+           2020-2021 Nathan Follens <nfollens@gnome.org>
+           2019-2021 Piotr Drąg <piotrdrag@gmail.com>
+           2019-2021 Aviary.pl <community-poland@mozilla.org>
+           2019-2021 Rafael Fontenelle <rafaelff@gnome.org>
+           2019-2021 Enrico Nicoletto <liverig@gmail.com>
+           2022 Hugo Carvalho <hugokarvalho@hotmail.com>
+           2020 Florentina Mușat <emryslokadottir@gmail.com>
+           2022 Aleksandr Melman <Alexmelman88@gmail.com>
+           2020-2022 Matej Urbančič <mateju@svn.gnome.org>
+           2020 Марко Костић <marko.m.kostic@gmail.com>
+           2021 Мирослав Николић <miroslavnikolic@rocketmail.com>
+           2019-2021 Anders Jonsson <anders.jonsson@norsjovallen.se>
+           2021 Luna Jernberg <droidbittin@gmail.com>
+           2019-2020 Sabri Ünal <libreajans@gmail.com>
+           2021 Muhammet Kara <muhammetk@gmail.com>
+           2019-2022 Emin Tufan Çetin <etcetin@gmail.com>
+           2020-2021 Yuri Chornoivan <yurchor@ukr.net>
+           2022 lumingzh <lumingzh@qq.com>
 License: GPL-3+
 
 Files: src/fp-vte-util.*
        src/rgba.h
 Copyright: 2018-2019 Christian Hergert <chergert@redhat.com>
-License: Apache-2.0
+License: MIT or Apache-2.0
 
 Files: src/kgx-tab-button.c
 Copyright: 2019 Alexander Mikhaylenko <exalm7659@gmail.com>
@@ -34,6 +70,7 @@ License: GPL-3+
 Files: src/kgx-tab-button.h
        src/kgx-tab-button.ui
        src/kgx-tab-switcher*
+       src/kgx-theme-switcher.*
 Copyright: 2021 Purism SPC
 License: GPL-3+
 
@@ -57,6 +94,26 @@ License: GPL-3+
  .
  On Debian systems, the complete text of the GNU General
  Public License version 3 can be found in "/usr/share/common-licenses/GPL-3".
+
+License: MIT
+ Permission is hereby granted, free of charge, to any person obtaining a
+ copy of this software and associated documentation files (the "Software"),
+ to deal in the Software without restriction, including without limitation
+ the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ and/or sell copies of the Software, and to permit persons to whom the
+ Software is furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice (including the next
+ paragraph) shall be included in all copies or substantial portions of the
+ Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
 
 License: Apache-2.0
  Licensed under the Apache License, Version 2.0 (the "License");
