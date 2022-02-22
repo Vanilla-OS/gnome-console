@@ -6,7 +6,6 @@ Uploaders: Arnaud Ferraris <arnaud.ferraris@gmail.com>
 Build-Depends:
  debhelper-compat (= 13),
  desktop-file-utils,
- git,
  gsettings-desktop-schemas-dev (>= 0.1.0),
  libglib2.0-dev (>= 2.66.0),
  libgtop2-dev,
