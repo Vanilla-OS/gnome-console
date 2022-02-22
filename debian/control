@@ -4,7 +4,6 @@ Priority: optional
 Maintainer: DebianOnMobile Maintainers <debian-on-mobile-maintainers@alioth-lists.debian.net>
 Uploaders: Arnaud Ferraris <arnaud.ferraris@gmail.com>
 Build-Depends:
- appstream-util,
  debhelper-compat (= 13),
  desktop-file-utils,
  git,
@@ -19,9 +18,7 @@ Build-Depends:
  meson,
  sassc,
 # Tests:
- at-spi2-core <!nocheck>,
- xvfb <!nocheck>,
- xauth <!nocheck>,
+ appstream-util <!nocheck>,
 Standards-Version: 4.6.0
 Homepage: https://gitlab.gnome.org/GNOME/console
 Vcs-Browser: https://salsa.debian.org/DebianOnMobile/kgx
