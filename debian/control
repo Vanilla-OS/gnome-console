@@ -20,8 +20,8 @@ Build-Depends:
  appstream-util <!nocheck>,
 Standards-Version: 4.6.0
 Homepage: https://gitlab.gnome.org/GNOME/console
-Vcs-Browser: https://salsa.debian.org/DebianOnMobile/kgx
-Vcs-Git: https://salsa.debian.org/DebianOnMobile/kgx.git
+Vcs-Browser: https://salsa.debian.org/DebianOnMobile-team/gnome-console
+Vcs-Git: https://salsa.debian.org/DebianOnMobile-team/gnome-console.git
 Rules-Requires-Root: no
 
 Package: gnome-console
