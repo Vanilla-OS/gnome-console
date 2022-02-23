@@ -1,3 +1,58 @@
+gnome-console (42~beta-1) unstable; urgency=medium
+
+  [ Arnaud Ferraris ]
+  * New upstream release.
+  * debian: rename package to gnome-console.
+    Upstream package became a GNOME core application and got renamed to
+    `Console` in the process. This commit acknowledges this move by:
+    - renaming the Debian package to `gnome-console`
+    - replacing all occurrences of "Kings Cross" with "Console"
+    - pointing to the new upstream URL
+    - adding a transitional package for smooth upgrades
+    - update copyright entries for renamed files
+  * d/patches: drop obsolete patch.
+    Upstream doesn't build a shared library anymore, making our patch
+    obsolete as it solved a reproducibility issue affecting this exact
+    shared library.
+  * d/rules: drop pkg.kgx.generic build profile.
+    Upstream used to provide a "generic" build profile with a different icon
+    and application name than what was used for "regular" builds. This is no
+    longer an option, and as such we can drop our corresponding
+    `pkg.kgx.generic` build profile.
+  * d/control: update build dependencies.
+    Upstream bumped the required versions for some of the build
+    dependencies, this commit makes sure our package has the same
+    requirements.
+  * debian: fix handling pre-release version numbers.
+    Upstream releases beta versions with a `.beta` suffix (and similar
+    suffixes are likely to be expected for alpha and rc versions). This
+    commit adds the necessary bits to both our `watch` and `gbp.conf` files
+    in order to properly deal with such version numbers in conformity with
+    the Debian policy.
+  * debian: build Nautilus extension.
+    Console provides an optional extension for Nautilus. In order to build
+    it and package it as `nautilus-extension-gnome-console`, this commit
+    adds the necessary build-dependency and new package definition to
+    `d/control`, and also introduces the corresponding `.install` file.
+  * d/patches: drop custom RPATH in executable.
+    Fixes: lintian: custom-library-search-path
+  * d/copyright: update and add entry for `po` files.
+    Our `copyright` file was missing information about translation files,
+    for which translators weren't credited. Fix this and update copyright
+    file so the data is accurate and includes newly added files.
+
+  [ Jeremy Bicha ]
+  * Don't run build tests through xvfb
+  * debian/rules: Don't manually set build directory
+  * Don't Build-Depend on git
+  * Update Vcs fields
+  * debian/rules: Enable auto features.
+    This force enables all the auto meson options.
+    Otherwise, we could accidentally have features disabled
+    because we didn't have a dependency installed.
+
+ -- Arnaud Ferraris <arnaud.ferraris@gmail.com>  Wed, 23 Feb 2022 12:18:33 +0100
+
 kgx (0.4.0-1) unstable; urgency=medium
 
   * d/gbp.conf: remove the 'v' from debian tag
