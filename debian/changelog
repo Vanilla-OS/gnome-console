@@ -1,3 +1,9 @@
+gnome-console (42~beta-2) unstable; urgency=medium
+
+  * Source-only upload for allowing testing transition, no other change
+
+ -- Arnaud Ferraris <arnaud.ferraris@gmail.com>  Thu, 17 Mar 2022 16:26:42 +0100
+
 gnome-console (42~beta-1) unstable; urgency=medium
 
   [ Arnaud Ferraris ]
