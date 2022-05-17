@@ -30,6 +30,7 @@ Depends:
  ${misc:Depends},
  ${shlibs:Depends},
  gsettings-desktop-schemas (>= 0.1.0),
+Recommends: nautilus-extension-gnome-console
 Replaces: kgx (<< 42~beta~)
 Breaks: kgx (<< 42~beta~)
 Description: Simple user-friendly terminal emulator for the GNOME desktop
