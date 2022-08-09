@@ -18,43 +18,70 @@ License: CC-BY-SA-4.0
 Files: debian/*
 Copyright: 2019 Zander Brown <zbrown@gnome.org>
            2020-2022 Arnaud Ferraris <arnaud.ferraris@gmail.com>
+           2022 Jeremy Bicha <jeremy.bicha@canonical.com>
 License: GPL-3+
 
 Files: po/*
-Copyright: 2021 Ícar N. S. <icar.nin@protonmail.com>
-           2020-2021 Marek Černocký <marek@manet.cz>
-           2019-2021 scootergrisen
-           2020-2021 Tim Sabsch <tim@sabsch.com>
-           2020-2021 Philipp Kiemle <philipp.kiemle@gmail.com>
-           2020 Efstathios Iosifidis <eiosifidis@gnome.org>
-           2019-2022 Asier Sarasua Garmendia <asiersarasua@ni.eus>
-           2019-2021 Jiri Grönroos <jiri.gronroos@iki.fi>
-           2020 Thibault Martin <mail@thibaultmart.in>
-           2020 Fabio Tomat <f.t.public@gmail.com>
-           2022 Fran Diéguez <frandieguez@gnome.org>
-           2022 Yosef Or Boczko <yoseforb@gmail.com>
-           2020-2021 gogo <trebelnik2@gmail.com>
-           2019-2021 Balázs Úr <ur.balazs@fsf.hu>
-           2020-2021 Kukuh Syafaat <kukuhsyafaat@gnome.org>
+Copyright: 1998-2005 Free Software Foundation, Inc.
+           1998-2022 Kjartan Maraas <kmaraas@gnome.org>
+           2005 Terance Edward Sola <terance@lyse.net>
+           2010 Torstein Adolf Winterseth <kvikende@fsfe.org>
            2019 Antonio Pandolfo <ant.pandolfo@gmail.com>
-           2020-2021 Nathan Follens <nfollens@gnome.org>
+           2019-2020 Sabri Ünal <libreajans@gmail.com>
+           2019-2021 scootergrisen
+           2019-2021 Jiri Grönroos <jiri.gronroos@iki.fi>
            2019-2021 Piotr Drąg <piotrdrag@gmail.com>
            2019-2021 Aviary.pl <community-poland@mozilla.org>
            2019-2021 Rafael Fontenelle <rafaelff@gnome.org>
            2019-2021 Enrico Nicoletto <liverig@gmail.com>
-           2022 Hugo Carvalho <hugokarvalho@hotmail.com>
-           2020 Florentina Mușat <emryslokadottir@gmail.com>
-           2022 Aleksandr Melman <Alexmelman88@gmail.com>
-           2020-2022 Matej Urbančič <mateju@svn.gnome.org>
-           2020 Марко Костић <marko.m.kostic@gmail.com>
-           2021 Мирослав Николић <miroslavnikolic@rocketmail.com>
            2019-2021 Anders Jonsson <anders.jonsson@norsjovallen.se>
-           2021 Luna Jernberg <droidbittin@gmail.com>
-           2019-2020 Sabri Ünal <libreajans@gmail.com>
-           2021 Muhammet Kara <muhammetk@gmail.com>
+           2019-2022 Balázs Úr <ur.balazs@fsf.hu>
+           2019-2022 Asier Sarasua Garmendia <asiersarasua@ni.eus>
            2019-2022 Emin Tufan Çetin <etcetin@gmail.com>
-           2020-2021 Yuri Chornoivan <yurchor@ukr.net>
+           2019-2022 Daniel Mustieles García <daniel.mustieles@gmail.com>
+           2020 Thibault Martin <mail@thibaultmart.in>
+           2020 Fabio Tomat <f.t.public@gmail.com>
+           2020 Efstathios Iosifidis <eiosifidis@gnome.org>
+           2020 Florentina Mușat <emryslokadottir@gmail.com>
+           2020 Rodrigo Lledó <rodhos92@gmail.com>
+           2020-2021 gogo <trebelnik2@gmail.com>
+           2020-2021 Tim Sabsch <tim@sabsch.com>
+           2020-2022 Marek Černocký <marek@manet.cz>
+           2020-2022 Philipp Kiemle <philipp.kiemle@gmail.com>
+           2020-2022 Matej Urbančič <mateju@svn.gnome.org>
+           2020-2022 Kukuh Syafaat <kukuhsyafaat@gnome.org>
+           2020-2022 Nathan Follens <nfollens@gnome.org>
+           2020-2022 Марко Костић <marko.m.kostic@gmail.com>
+           2020-2022 Yuri Chornoivan <yurchor@ukr.net>
+           2021 Ícar N. S. <icar.nin@protonmail.com>
+           2021 Мирослав Николић <miroslavnikolic@rocketmail.com>
+           2021 Luna Jernberg <droidbittin@gmail.com>
+           2021 Muhammet Kara <muhammetk@gmail.com>
+           2021-2022 Quentin PAGÈS <pages_quentin@hotmail.com>
+           2022 Fran Diéguez <frandieguez@gnome.org>
+           2022 Yosef Or Boczko <yoseforb@gmail.com>
+           2022 Hugo Carvalho <hugokarvalho@hotmail.com>
+           2022 Aleksandr Melman <Alexmelman88@gmail.com>
            2022 lumingzh <lumingzh@qq.com>
+           2022 The Abkhazian language development fund named after Bagrat Shinkuba
+           2022 Нанба Наала <naala-nanba@rambler.ru>
+           2022 Alexander Shopov <ash@kambanaria.org>
+           2022 Jordi Mas i Hernàndez <jmas@softcatala.org>
+           2022 Ask Hjorth Larsen <asklarsen@gmail.com>
+           2022 Christian Kirbach <christian.kirbach@gmail.com>
+           2022 Jürgen Benvenuti <gastornis@posteo.org>
+           2022 Danial Behzadi <dani.behzi@ubuntu.com>
+           2022 Charles Monzat <charles.monzat@free.fr>
+           2022 Milo Casagrande <milo@milo.name>
+           2022 sicklylife <translation@sicklylife.jp>
+           2022 Temuri Doghonadze <temuri.doghonadze@gmail.com>
+           2022 Baurzhan Muftakhidinov <baurthefirst@gmail.com>
+           2022 DaeHyun Sung <sungdh86+git@gmail.com>
+           2022 Aurimas Černius <aurisc4@gmail.com>
+           2022 Hannie Dumoleyn <hannie@ubuntu-nl.org>
+           2022 A S Alam <aalam@fedoraproject.org>
+           2022 Dušan Kazik <prescott66@gmail.com>
+           2022 Ngọc Quân Trần <vnwildman@gmail.com>
 License: GPL-3+
 
 Files: src/fp-vte-util.*
