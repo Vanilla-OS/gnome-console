@@ -1,6 +1,6 @@
-/* kgx-nautilus.h
+/* kgx-util.h
  *
- * Copyright 2021 Zander Brown
+ * Copyright 2022 Zander Brown
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,23 +18,13 @@
 
 #pragma once
 
-#include <nautilus-extension.h>
-#include <gio/gdesktopappinfo.h>
+#include <glib.h>
+#include <gio/gio.h>
 
 G_BEGIN_DECLS
 
-#define KGX_TYPE_NAUTILUS kgx_nautilus_get_type ()
-
-struct _KgxNautilus {
-  GObject   parent_instance;
-
-  GAppInfo *kgx;
-};
-
-G_DECLARE_FINAL_TYPE (KgxNautilus, kgx_nautilus, KGX, NAUTILUS, GObject)
-
-void         kgx_nautilus_open         (KgxNautilus *self,
-                                        GtkWidget   *window,
-                                        GFile       *file);
+void       kgx_util_transform_uris_to_quoted_fuse_paths (GStrv       uris);
+char      *kgx_util_concat_uris                         (GStrv       uris,
+                                                         gsize      *length);
 
 G_END_DECLS

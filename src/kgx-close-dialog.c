@@ -30,7 +30,7 @@
 #include "kgx-config.h"
 #include "kgx-close-dialog.h"
 #include "kgx-process.h"
-#include <handy.h>
+#include <adwaita.h>
 
 GtkWidget *
 kgx_close_dialog_new (KgxCloseDialogContext  context,
@@ -47,14 +47,14 @@ kgx_close_dialog_new (KgxCloseDialogContext  context,
   switch (context) {
     case KGX_CONTEXT_WINDOW:
       g_object_set (dialog,
-                    "text", _("Close Window?"),
-                    "secondary-text", _("Some commands are still running, closing this window will kill them and may lead to unexpected outcomes"),
+                    "heading", _("Close Window?"),
+                    "body", _("Some commands are still running, closing this window will kill them and may lead to unexpected outcomes"),
                     NULL);
       break;
     case KGX_CONTEXT_TAB:
       g_object_set (dialog,
-                    "text", _("Close Tab?"),
-                    "secondary-text", _("Some commands are still running, closing this tab will kill them and may lead to unexpected outcomes"),
+                    "heading", _("Close Tab?"),
+                    "body", _("Some commands are still running, closing this tab will kill them and may lead to unexpected outcomes"),
                     NULL);
       break;
     default:
@@ -65,13 +65,11 @@ kgx_close_dialog_new (KgxCloseDialogContext  context,
     KgxProcess *process = g_ptr_array_index (commands, i);
     GtkWidget *row;
 
-    row = g_object_new (HDY_TYPE_ACTION_ROW,
-                        "visible", TRUE,
-                        "can-focus", FALSE,
+    row = g_object_new (ADW_TYPE_ACTION_ROW,
                         "title", kgx_process_get_exec (process),
                         NULL);
 
-    gtk_container_add (GTK_CONTAINER (list), row);
+    gtk_list_box_append (GTK_LIST_BOX (list), row);
   }
 
   return dialog;
