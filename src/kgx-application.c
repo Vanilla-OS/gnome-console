@@ -40,11 +40,12 @@
 #include "kgx-pages.h"
 #include "kgx-simple-tab.h"
 #include "kgx-resources.h"
+#include "kgx-watcher.h"
 
 #define LOGO_COL_SIZE 28
 #define LOGO_ROW_SIZE 14
 
-G_DEFINE_TYPE (KgxApplication, kgx_application, GTK_TYPE_APPLICATION)
+G_DEFINE_TYPE (KgxApplication, kgx_application, ADW_TYPE_APPLICATION)
 
 enum {
   PROP_0,
@@ -62,25 +63,25 @@ static void
 kgx_application_set_theme (KgxApplication *self,
                            KgxTheme        theme)
 {
-  HdyStyleManager *style_manager;
+  AdwStyleManager *style_manager;
 
   g_return_if_fail (KGX_IS_APPLICATION (self));
 
   self->theme = theme;
 
-  style_manager = hdy_style_manager_get_default ();
+  style_manager = adw_style_manager_get_default ();
 
   switch (theme) {
     case KGX_THEME_AUTO:
-      hdy_style_manager_set_color_scheme (style_manager, HDY_COLOR_SCHEME_PREFER_LIGHT);
+      adw_style_manager_set_color_scheme (style_manager, ADW_COLOR_SCHEME_PREFER_LIGHT);
       break;
     case KGX_THEME_DAY:
-      hdy_style_manager_set_color_scheme (style_manager, HDY_COLOR_SCHEME_FORCE_LIGHT);
+      adw_style_manager_set_color_scheme (style_manager, ADW_COLOR_SCHEME_FORCE_LIGHT);
       break;
     case KGX_THEME_NIGHT:
     case KGX_THEME_HACKER:
     default:
-      hdy_style_manager_set_color_scheme (style_manager, HDY_COLOR_SCHEME_FORCE_DARK);
+      adw_style_manager_set_color_scheme (style_manager, ADW_COLOR_SCHEME_FORCE_DARK);
       break;
   }
 
@@ -172,8 +173,6 @@ kgx_application_finalize (GObject *object)
   g_clear_object (&self->settings);
   g_clear_object (&self->desktop_interface);
 
-  g_clear_pointer (&self->watching, g_tree_unref);
-  g_clear_pointer (&self->children, g_tree_unref);
   g_clear_pointer (&self->pages, g_tree_unref);
 
   G_OBJECT_CLASS (kgx_application_parent_class)->finalize (object);
@@ -205,140 +204,11 @@ kgx_application_activate (GApplication *app)
 }
 
 
-static gboolean
-handle_watch_iter (gpointer pid,
-                   gpointer val,
-                   gpointer user_data)
-{
-  KgxProcess *process = val;
-  KgxApplication *self = user_data;
-  GPid parent = kgx_process_get_parent (process);
-  struct ProcessWatch *watch = NULL;
-
-  watch = g_tree_lookup (self->watching, GINT_TO_POINTER (parent));
-
-  // There are far more processes on the system than there are children
-  // of watches, thus lookup are unlikly
-  if (G_UNLIKELY (watch != NULL)) {
-
-    /* If the page died we stop caring about its processes */
-    if (G_UNLIKELY (watch->page == NULL)) {
-      g_tree_remove (self->watching, GINT_TO_POINTER (parent));
-      g_tree_remove (self->children, pid);
-
-      return FALSE;
-    }
-
-    if (!g_tree_lookup (self->children, pid)) {
-      struct ProcessWatch *child_watch = g_new0 (struct ProcessWatch, 1);
-
-      child_watch->process = g_rc_box_acquire (process);
-      g_set_weak_pointer (&child_watch->page, watch->page);
-
-      g_debug ("Hello %i!", GPOINTER_TO_INT (pid));
-
-      g_tree_insert (self->children, pid, child_watch);
-    }
-
-    kgx_tab_push_child (watch->page, process);
-  }
-
-  return FALSE;
-}
-
-
-struct RemoveDead {
-  GTree     *plist;
-  GPtrArray *dead;
-};
-
-
-static gboolean
-remove_dead (gpointer pid,
-             gpointer val,
-             gpointer user_data)
-{
-  struct RemoveDead *data = user_data;
-  struct ProcessWatch *watch = val;
-
-  if (!g_tree_lookup (data->plist, pid)) {
-    g_debug ("%i marked as dead", GPOINTER_TO_INT (pid));
-
-    kgx_tab_pop_child (watch->page, watch->process);
-
-    g_ptr_array_add (data->dead, pid);
-  }
-
-  return FALSE;
-}
-
-
-static gboolean
-watch (gpointer data)
-{
-  KgxApplication *self = KGX_APPLICATION (data);
-  g_autoptr (GTree) plist = NULL;
-  struct RemoveDead dead;
-
-  plist = kgx_process_get_list ();
-
-  g_tree_foreach (plist, handle_watch_iter, self);
-
-  dead.plist = plist;
-  dead.dead = g_ptr_array_new_full (1, NULL);
-
-  g_tree_foreach (self->children, remove_dead, &dead);
-
-  // We can't modify self->chilren whilst walking it
-  for (int i = 0; i < dead.dead->len; i++) {
-    g_tree_remove (self->children, g_ptr_array_index (dead.dead, i));
-  }
-
-  g_ptr_array_unref (dead.dead);
-
-  return G_SOURCE_CONTINUE;
-}
-
-static inline void
-set_watcher (KgxApplication *self, gboolean focused)
-{
-  g_debug ("updated watcher focused? %s", focused ? "yes" : "no");
-
-  if (self->timeout != 0) {
-    g_source_remove (self->timeout);
-  }
-
-  // Slow down polling when nothing is focused
-  self->timeout = g_timeout_add (focused ? 500 : 2000, watch, self);
-  g_source_set_name_by_id (self->timeout, "[kgx] child watcher");
-}
-
-
-static void
-update_styles (KgxApplication *self)
-{
-  HdyStyleManager *style_manager = hdy_style_manager_get_default ();
-  gboolean dark = hdy_style_manager_get_dark (style_manager);
-  gboolean hc = hdy_style_manager_get_high_contrast (style_manager);
-
-  if (hc && dark) {
-    gtk_css_provider_load_from_resource (self->provider, KGX_APPLICATION_PATH "styles-hc-dark.css");
-  } else if (hc) {
-    gtk_css_provider_load_from_resource (self->provider, KGX_APPLICATION_PATH "styles-hc.css");
-  } else if (dark) {
-    gtk_css_provider_load_from_resource (self->provider, KGX_APPLICATION_PATH "styles-dark.css");
-  } else {
-    gtk_css_provider_load_from_resource (self->provider, KGX_APPLICATION_PATH "styles-light.css");
-  }
-}
-
-
 static void
 kgx_application_startup (GApplication *app)
 {
   KgxApplication    *self = KGX_APPLICATION (app);
-  HdyStyleManager   *style_manager;
-  g_autoptr(GAction) settings_action;
+  g_autoptr (GAction) settings_action = NULL;
 
   const char *const new_window_accels[] = { "<shift><primary>n", NULL };
   const char *const new_tab_accels[] = { "<shift><primary>t", NULL };
@@ -358,8 +228,6 @@ kgx_application_startup (GApplication *app)
   g_type_ensure (KGX_TYPE_PAGES);
 
   G_APPLICATION_CLASS (kgx_application_parent_class)->startup (app);
-
-  hdy_init ();
 
   gtk_application_set_accels_for_action (GTK_APPLICATION (app),
                                          "win.new-window", new_window_accels);
@@ -387,21 +255,6 @@ kgx_application_startup (GApplication *app)
 
   settings_action = g_settings_create_action (self->settings, "theme");
   g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (settings_action));
-
-  self->provider = gtk_css_provider_new ();
-  gtk_style_context_add_provider_for_screen (gdk_screen_get_default (),
-                                             GTK_STYLE_PROVIDER (self->provider),
-                                             /* Is this stupid? Yes
-                                              * Does it fix vte using the wrong
-                                              * priority for fallback styles? Yes*/
-                                             GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
-
-  style_manager = hdy_style_manager_get_default ();
-  g_signal_connect_swapped (style_manager, "notify::dark", G_CALLBACK (update_styles), self);
-  g_signal_connect_swapped (style_manager, "notify::high-contrast", G_CALLBACK (update_styles), self);
-  update_styles (self);
-
-  set_watcher (KGX_APPLICATION (app), TRUE);
 }
 
 
@@ -425,15 +278,55 @@ kgx_application_open (GApplication  *app,
 
 
 static int
+kgx_application_local_command_line (GApplication   *app,
+                                    char         ***arguments,
+                                    int            *exit_status)
+{
+  for (size_t i = 0; (*arguments)[i] != NULL; i++) {
+    /* Don't edit argv[0], but also don't start the loop with i = 1,
+     * because it's technically possible to run a program with argc == 0 */
+    if (i == 0) {
+      continue;
+    }
+
+    if (strcmp ((*arguments)[i], "-e") == 0) {
+      /* For xterm-compatible handling of -e, we want to stop parsing
+       * other command-line options at this point, so that
+       *
+       *     kgx -T "Directory listing" -e ls -al /
+       *
+       * passes "-al" to ls instead of trying to parse them as kgx
+       * options. To do this, turn -e into the "--" pseudo-argument -
+       * unless there is exactly one argument following it, in which
+       * case leave it as -e, which the GOptionContext will treat
+       * like --command. */
+      if (!((*arguments)[i + 1] != NULL && (*arguments)[i + 2] == NULL)) {
+        (*arguments)[i][1] = '-';
+      }
+
+      break;
+    } else if (strcmp ((*arguments)[i], "--") == 0) {
+      /* Don't continue to edit arguments after the -- separator,
+       * so you can do: kgx -- some-command ... -e ... */
+      break;
+    }
+  }
+
+  return G_APPLICATION_CLASS (kgx_application_parent_class)->local_command_line (app, arguments, exit_status);
+}
+
+
+static int
 kgx_application_command_line (GApplication            *app,
                               GApplicationCommandLine *cli)
 {
   KgxApplication *self = KGX_APPLICATION (app);
   guint32 timestamp = GDK_CURRENT_TIME;
   GVariantDict *options = NULL;
+  g_auto (GStrv) argv = NULL;
+  const char *command = NULL;
   const char *working_dir = NULL;
   const char *title = NULL;
-  const char *command = NULL;
   const char *const *shell = NULL;
   const char *cwd = NULL;
   gint64 scrollback;
@@ -446,6 +339,7 @@ kgx_application_command_line (GApplication            *app,
   g_variant_dict_lookup (options, "working-directory", "^&ay", &working_dir);
   g_variant_dict_lookup (options, "title", "&s", &title);
   g_variant_dict_lookup (options, "command", "^&ay", &command);
+  g_variant_dict_lookup (options, G_OPTION_REMAINING, "^aay", &argv);
 
   if (g_variant_dict_lookup (options, "set-shell", "^as", &shell) && shell) {
     g_settings_set_strv (self->settings, "shell", shell);
@@ -467,15 +361,46 @@ kgx_application_command_line (GApplication            *app,
     path = g_file_new_for_path (cwd);
   }
 
+  if (command != NULL) {
+    gboolean can_exec_directly;
+
+    if (argv != NULL && argv[0] != NULL) {
+      g_warning (_("Cannot use both --command and positional parameters"));
+      return EXIT_FAILURE;
+    }
+
+    g_clear_pointer (&argv, g_strfreev);
+
+    if (strchr (command, '/') != NULL) {
+      can_exec_directly = g_file_test (command, G_FILE_TEST_IS_EXECUTABLE);
+    } else {
+      g_autofree char *program = g_find_program_in_path (command);
+
+      can_exec_directly = (program != NULL);
+    }
+
+    if (can_exec_directly) {
+      argv = g_new0 (char *, 2);
+      argv[0] = g_strdup (command);
+      argv[1] = NULL;
+    } else {
+      argv = g_new0 (char *, 4);
+      argv[0] = g_strdup ("/bin/sh");
+      argv[1] = g_strdup ("-c");
+      argv[2] = g_strdup (command);
+      argv[3] = NULL;
+    }
+  }
+
   if (g_variant_dict_lookup (options, "tab", "b", &tab) && tab) {
     kgx_application_add_terminal (self,
                                   KGX_WINDOW (gtk_application_get_active_window (GTK_APPLICATION (self))),
                                   timestamp,
                                   path,
-                                  command,
+                                  argv,
                                   title);
   } else {
-    kgx_application_add_terminal (self, NULL, timestamp, path, command, title);
+    kgx_application_add_terminal (self, NULL, timestamp, path, argv, title);
   }
 
   return EXIT_SUCCESS;
@@ -594,6 +519,7 @@ kgx_application_class_init (KgxApplicationClass *klass)
   app_class->activate = kgx_application_activate;
   app_class->startup = kgx_application_startup;
   app_class->open = kgx_application_open;
+  app_class->local_command_line = kgx_application_local_command_line;
   app_class->command_line = kgx_application_command_line;
   app_class->handle_local_options = kgx_application_handle_local_options;
 
@@ -644,18 +570,6 @@ kgx_application_class_init (KgxApplicationClass *klass)
 
 
 static void
-clear_watch (struct ProcessWatch *watch)
-{
-  g_return_if_fail (watch != NULL);
-
-  g_clear_pointer (&watch->process, kgx_process_unref);
-  g_clear_weak_pointer (&watch->page);
-
-  g_clear_pointer (&watch, g_free);
-}
-
-
-static void
 font_changed (GSettings      *settings,
               const char     *key,
               KgxApplication *self)
@@ -699,7 +613,7 @@ static GOptionEntry entries[] = {
     G_OPTION_ARG_FILENAME,
     NULL,
     N_("Execute the argument to this option inside the terminal"),
-    NULL
+    N_("COMMAND")
   },
   {
     "working-directory",
@@ -727,7 +641,7 @@ static GOptionEntry entries[] = {
     G_OPTION_ARG_STRING,
     NULL,
     N_("Set the initial window title"),
-    NULL
+    N_("TITLE")
   },
   {
     "set-shell",
@@ -736,7 +650,7 @@ static GOptionEntry entries[] = {
     G_OPTION_ARG_STRING_ARRAY,
     NULL,
     N_("ADVANCED: Set the shell to launch"),
-    NULL
+    N_("SHELL")
   },
   {
     "set-scrollback",
@@ -745,7 +659,16 @@ static GOptionEntry entries[] = {
     G_OPTION_ARG_INT64,
     NULL,
     N_("ADVANCED: Set the scrollback length"),
-    NULL
+    N_("LINES")
+  },
+  {
+    G_OPTION_REMAINING,
+    0,
+    0,
+    G_OPTION_ARG_FILENAME_ARRAY,
+    NULL,
+    NULL,
+    N_("[-e|-- COMMAND [ARGUMENT...]]")
   },
   { NULL }
 };
@@ -790,16 +713,16 @@ focus_activated (GSimpleAction *action,
                  gpointer       data)
 {
   KgxApplication *self = KGX_APPLICATION (data);
-  GtkWidget *window;
+  GtkRoot *root;
   KgxPages *pages;
   KgxTab *page;
 
   page = kgx_application_lookup_page (self, g_variant_get_uint32 (parameter));
   pages = kgx_tab_get_pages (page);
   kgx_pages_focus_page (pages, page);
-  window = gtk_widget_get_toplevel (GTK_WIDGET (pages));
+  root = gtk_widget_get_root (GTK_WIDGET (pages));
 
-  gtk_window_present_with_time (GTK_WINDOW (window), GDK_CURRENT_TIME);
+  gtk_window_present_with_time (GTK_WINDOW (root), GDK_CURRENT_TIME);
 }
 
 
@@ -867,67 +790,7 @@ kgx_application_init (KgxApplication *self)
                     G_CALLBACK (font_changed),
                     self);
 
-  self->watching = g_tree_new_full (kgx_pid_cmp,
-                                    NULL,
-                                    NULL,
-                                    (GDestroyNotify) clear_watch);
-  self->children = g_tree_new_full (kgx_pid_cmp,
-                                    NULL,
-                                    NULL,
-                                    (GDestroyNotify) clear_watch);
   self->pages = g_tree_new_full (kgx_pid_cmp, NULL, NULL, NULL);
-
-  self->active = 0;
-  self->timeout = 0;
-}
-
-
-/**
- * kgx_application_add_watch:
- * @self: the #KgxApplication
- * @pid: the shell process to watch
- * @page: the #KgxTab the shell is running in
- *
- * Registers a new shell process with the pid watcher
- */
-void
-kgx_application_add_watch (KgxApplication *self,
-                           GPid            pid,
-                           KgxTab        *page)
-{
-  struct ProcessWatch *watch;
-
-  g_return_if_fail (KGX_IS_APPLICATION (self));
-  g_return_if_fail (KGX_IS_TAB (page));
-
-  watch = g_new0 (struct ProcessWatch, 1);
-  watch->process = kgx_process_new (pid);
-  g_set_weak_pointer (&watch->page, page);
-
-  g_debug ("Started watching %i", pid);
-
-  g_tree_insert (self->watching, GINT_TO_POINTER (pid), watch);
-}
-
-/**
- * kgx_application_remove_watch:
- * @self: the #KgxApplication
- * @pid: the shell process to stop watch watching
- *
- * unregisters the shell with #GPid pid
- */
-void
-kgx_application_remove_watch (KgxApplication *self,
-                              GPid            pid)
-{
-  g_return_if_fail (KGX_IS_APPLICATION (self));
-
-  if (G_LIKELY (g_tree_lookup (self->watching, GINT_TO_POINTER (pid)))) {
-    g_tree_remove (self->watching, GINT_TO_POINTER (pid));
-    g_debug ("Stopped watching %i", pid);
-  } else {
-    g_warning ("Unknown process %i", pid);
-  }
 }
 
 
@@ -951,52 +814,6 @@ kgx_application_get_font (KgxApplication *self)
                                 MONOSPACE_FONT_KEY_NAME);
 
   return pango_font_description_from_string (font);
-}
-
-
-/**
- * kgx_application_push_active:
- * @self: the #KgxApplication
- *
- * Increase the active window count
- */
-void
-kgx_application_push_active (KgxApplication *self)
-{
-  g_return_if_fail (KGX_IS_APPLICATION (self));
-
-  self->active++;
-
-  g_debug ("push_active");
-
-  if (G_LIKELY (self->active > 0)) {
-    set_watcher (self, TRUE);
-  } else {
-    set_watcher (self, FALSE);
-  }
-}
-
-
-/**
- * kgx_application_pop_active:
- * @self: the #KgxApplication
- *
- * Decrease the active window count
- */
-void
-kgx_application_pop_active (KgxApplication *self)
-{
-  g_return_if_fail (KGX_IS_APPLICATION (self));
-
-  self->active--;
-
-  g_debug ("pop_active");
-
-  if (G_LIKELY (self->active < 1)) {
-    set_watcher (self, FALSE);
-  } else {
-    set_watcher (self, TRUE);
-  }
 }
 
 
@@ -1070,7 +887,7 @@ started (GObject      *src,
     return;
   }
 
-  kgx_application_add_watch (KGX_APPLICATION (app), pid, page);
+  kgx_watcher_add (kgx_watcher_get_default (), pid, page);
 }
 
 
@@ -1079,37 +896,31 @@ kgx_application_add_terminal (KgxApplication *self,
                               KgxWindow      *existing_window,
                               guint32         timestamp,
                               GFile          *working_directory,
-                              const char     *command,
+                              GStrv           argv,
                               const char     *title)
 {
   g_autofree char *user_shell = vte_get_user_shell ();
   g_autofree char *directory = NULL;
-  g_autoptr (GError) error = NULL;
   g_auto (GStrv) shell = NULL;
   g_auto (GStrv) custom_shell = NULL;
   GtkWindow *window;
   GtkWidget *tab;
   KgxPages *pages;
 
-  g_shell_parse_argv (command ? command : user_shell, NULL, &shell, &error);
-
-  if (error) {
-    g_warning ("Failed to parse “%s” as a command",
-               command ? command : user_shell);
-    shell = NULL;
-    g_clear_error (&error);
-  }
-
-  if (G_LIKELY (command == NULL)) {
+  if (argv == NULL) {
     custom_shell = g_settings_get_strv (self->settings, "shell");
 
     if (g_strv_length (custom_shell) > 0) {
       shell = g_steal_pointer (&custom_shell);
+    } else if (user_shell != NULL) {
+      shell = g_new0 (char *, 2);
+      shell[0] = g_steal_pointer (&user_shell);
+      shell[1] = NULL;
     }
   }
 
   /* We should probably do something other than /bin/sh  */
-  if (shell == NULL) {
+  if (argv == NULL && shell == NULL) {
     shell = g_new0 (char *, 2);
     shell[0] = g_strdup ("/bin/sh");
     shell[1] = NULL;
@@ -1124,11 +935,10 @@ kgx_application_add_terminal (KgxApplication *self,
 
   tab = g_object_new (KGX_TYPE_SIMPLE_TAB,
                       "application", self,
-                      "visible", TRUE,
                       "initial-work-dir", directory,
-                      "command", shell,
+                      "command", shell != NULL ? shell : argv,
                       "tab-title", title,
-                      "close-on-quit", command == NULL,
+                      "close-on-quit", argv == NULL,
                       NULL);
   kgx_tab_start (KGX_TAB (tab), started, self);
 

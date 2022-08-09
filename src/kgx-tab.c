@@ -30,6 +30,7 @@
 #include "kgx-tab.h"
 #include "kgx-pages.h"
 #include "kgx-terminal.h"
+#include "kgx-util.h"
 #include "kgx-application.h"
 
 
@@ -46,7 +47,6 @@ struct _KgxTabPrivate {
   double                zoom;
   KgxStatus             status;
   KgxTheme              theme;
-  gboolean              opaque;
   gint64                scrollback_lines;
 
   gboolean              is_active;
@@ -60,13 +60,11 @@ struct _KgxTabPrivate {
   GBinding             *term_font_bind;
   GBinding             *term_zoom_bind;
   GBinding             *term_theme_bind;
-  GBinding             *term_opaque_bind;
   GBinding             *term_scrollback_bind;
 
   GBinding             *pages_font_bind;
   GBinding             *pages_zoom_bind;
   GBinding             *pages_theme_bind;
-  GBinding             *pages_opaque_bind;
   GBinding             *pages_scrollback_bind;
 
   GtkWidget            *stack;
@@ -108,7 +106,6 @@ enum {
   PROP_ZOOM,
   PROP_THEME,
   PROP_IS_ACTIVE,
-  PROP_OPAQUE,
   PROP_CLOSE_ON_QUIT,
   PROP_NEEDS_ATTENTION,
   PROP_SEARCH_MODE_ENABLED,
@@ -200,14 +197,14 @@ search_enabled (GObject    *object,
 {
   KgxTabPrivate *priv = kgx_tab_get_instance_private (self);
 
-  if (!hdy_search_bar_get_search_mode (HDY_SEARCH_BAR (priv->search_bar))) {
+  if (!gtk_search_bar_get_search_mode (GTK_SEARCH_BAR (priv->search_bar))) {
     gtk_widget_grab_focus (GTK_WIDGET (self));
   }
 }
 
 
 static void
-search_changed (HdySearchBar *bar,
+search_changed (GtkSearchBar *bar,
                 KgxTab       *self)
 {
   KgxTabPrivate *priv = kgx_tab_get_instance_private (self);
@@ -217,7 +214,7 @@ search_changed (HdySearchBar *bar,
   gboolean narrowing_down;
   guint32 flags = PCRE2_MULTILINE;
 
-  search = gtk_entry_get_text (GTK_ENTRY (priv->search_entry));
+  search = gtk_editable_get_text (GTK_EDITABLE (priv->search_entry));
 
   if (search) {
     g_autofree char *lowercase = g_utf8_strdown (search, -1);
@@ -270,7 +267,7 @@ search_changed (HdySearchBar *bar,
 
 
 static void
-search_next (HdySearchBar *bar,
+search_next (GtkSearchBar *bar,
              KgxTab       *self)
 {
   KgxTabPrivate *priv = kgx_tab_get_instance_private (self);
@@ -280,7 +277,7 @@ search_next (HdySearchBar *bar,
 
 
 static void
-search_prev (HdySearchBar *bar,
+search_prev (GtkSearchBar *bar,
              KgxTab       *self)
 {
   KgxTabPrivate *priv = kgx_tab_get_instance_private (self);
@@ -353,9 +350,6 @@ kgx_tab_get_property (GObject    *object,
       break;
     case PROP_THEME:
       g_value_set_enum (value, priv->theme);
-      break;
-    case PROP_OPAQUE:
-      g_value_set_boolean (value, priv->opaque);
       break;
     case PROP_CLOSE_ON_QUIT:
       g_value_set_boolean (value, priv->close_on_quit);
@@ -450,9 +444,6 @@ kgx_tab_set_property (GObject      *object,
     case PROP_THEME:
       priv->theme = g_value_get_enum (value);
       break;
-    case PROP_OPAQUE:
-      priv->opaque = g_value_get_boolean (value);
-      break;
     case PROP_CLOSE_ON_QUIT:
       priv->close_on_quit = g_value_get_boolean (value);
       break;
@@ -473,48 +464,17 @@ kgx_tab_set_property (GObject      *object,
 
 
 static gboolean
-kgx_tab_draw (GtkWidget *widget,
-              cairo_t   *cr)
+drop (GtkDropTarget *target,
+      const GValue  *value,
+      KgxTab        *self)
 {
-  GtkStateFlags flags;
+  kgx_tab_accept_drop (self, value);
 
-  GTK_WIDGET_CLASS (kgx_tab_parent_class)->draw (widget, cr);
-
-  flags = gtk_widget_get_state_flags (widget);
-
-  /* FIXME this is a workaround for the fact GTK3 css outline is used for focus
-   * only by default. This can be removed in GTK4 as it just works there. */
-  if (flags & GTK_STATE_FLAG_DROP_ACTIVE) {
-    GtkStyleContext *context = gtk_widget_get_style_context (widget);
-    int width = gtk_widget_get_allocated_width (widget);
-    int height = gtk_widget_get_allocated_height (widget);
-
-    gtk_render_focus (context, cr, 0, 0, width, height);
-  }
-
-  return GDK_EVENT_PROPAGATE;
+  return TRUE;
 }
 
 
-static void
-kgx_tab_drag_data_received (GtkWidget        *widget,
-                            GdkDragContext   *context,
-                            gint              x,
-                            gint              y,
-                            GtkSelectionData *selection_data,
-                            guint             info,
-                            guint             time)
-{
-  KgxTab *self = KGX_TAB (widget);
-  GdkDragAction action = gdk_drag_context_get_selected_action (context);
-
-  kgx_tab_accept_drop (self, selection_data);
-
-  gtk_drag_finish (context, TRUE, action == GDK_ACTION_COPY, time);
-}
-
-
-static void
+static gboolean
 kgx_tab_grab_focus (GtkWidget *widget)
 {
   KgxTab *self = KGX_TAB (widget);
@@ -522,10 +482,10 @@ kgx_tab_grab_focus (GtkWidget *widget)
 
   if (priv->terminal) {
     gtk_widget_grab_focus (GTK_WIDGET (priv->terminal));
-    return;
+    return GDK_EVENT_STOP;
   }
 
-  GTK_WIDGET_CLASS (kgx_tab_parent_class)->grab_focus (widget);
+  return GTK_WIDGET_CLASS (kgx_tab_parent_class)->grab_focus (widget);
 }
 
 
@@ -560,8 +520,6 @@ kgx_tab_class_init (KgxTabClass *klass)
   object_class->get_property = kgx_tab_get_property;
   object_class->set_property = kgx_tab_set_property;
 
-  widget_class->draw = kgx_tab_draw;
-  widget_class->drag_data_received = kgx_tab_drag_data_received;
   widget_class->grab_focus = kgx_tab_grab_focus;
 
   tab_class->start = kgx_tab_real_start;
@@ -656,20 +614,6 @@ kgx_tab_class_init (KgxTabClass *klass)
                        KGX_TYPE_THEME,
                        KGX_THEME_NIGHT,
                        G_PARAM_READWRITE);
-
-  /**
-   * KgxTab:opaque:
-   *
-   * Whether to disable transparency
-   *
-   * Bound to #GtkWindow:is-maximized on the #KgxWindow
-   *
-   * Stability: Private
-   */
-  pspecs[PROP_OPAQUE] =
-    g_param_spec_boolean ("opaque", "Opaque", "Terminal opaqueness",
-                          FALSE,
-                          G_PARAM_READWRITE);
 
   pspecs[PROP_CLOSE_ON_QUIT] =
     g_param_spec_boolean ("close-on-quit", "Close on quit",
@@ -768,8 +712,8 @@ kgx_tab_add_child (GtkBuildable *buildable,
   if (type && g_str_equal (type, "content")) {
     g_set_weak_pointer (&priv->content, GTK_WIDGET (child));
     gtk_stack_add_named (GTK_STACK (priv->stack), GTK_WIDGET (child), "content");
-  } else {
-    gtk_container_add (GTK_CONTAINER (self), GTK_WIDGET (child));
+  } else if (GTK_IS_WIDGET (child)) {
+    gtk_box_append (GTK_BOX (self), GTK_WIDGET (child));
   }
 }
 
@@ -788,7 +732,6 @@ died (KgxTab         *self,
       gboolean        success)
 {
   KgxTabPrivate *priv;
-  GtkStyleContext *context;
 
   g_return_if_fail (KGX_IS_TAB (self));
 
@@ -796,12 +739,10 @@ died (KgxTab         *self,
 
   gtk_label_set_markup (GTK_LABEL (priv->label), message);
 
-  context = gtk_widget_get_style_context (GTK_WIDGET (priv->revealer));
-
   if (type == GTK_MESSAGE_ERROR) {
-    gtk_style_context_add_class (context, "error");
+    gtk_widget_add_css_class (priv->revealer, "error");
   } else {
-    gtk_style_context_remove_class (context, "error");
+    gtk_widget_remove_css_class (priv->revealer, "error");
   }
 
   gtk_revealer_set_reveal_child (GTK_REVEALER (priv->revealer), TRUE);
@@ -817,6 +758,7 @@ kgx_tab_init (KgxTab *self)
 {
   static guint last_id = 0;
   KgxTabPrivate *priv = kgx_tab_get_instance_private (self);
+  GtkDropTarget *target;
 
   last_id++;
 
@@ -833,12 +775,12 @@ kgx_tab_init (KgxTab *self)
 
   g_signal_connect (self, "died", G_CALLBACK (died), NULL);
 
-  hdy_search_bar_connect_entry (HDY_SEARCH_BAR (priv->search_bar),
-                                GTK_ENTRY (priv->search_entry));
+  gtk_search_bar_connect_entry (GTK_SEARCH_BAR (priv->search_bar),
+                                GTK_EDITABLE (priv->search_entry));
 
-  gtk_drag_dest_set (GTK_WIDGET (self), GTK_DEST_DEFAULT_ALL, NULL, 0,
-                     GDK_ACTION_COPY);
-  gtk_drag_dest_add_text_targets (GTK_WIDGET (self));
+  target = gtk_drop_target_new (G_TYPE_STRING, GDK_ACTION_COPY);
+  g_signal_connect (target, "drop", G_CALLBACK (drop), self);
+  gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (target));
 }
 
 
@@ -870,7 +812,6 @@ kgx_tab_connect_terminal (KgxTab      *self,
   g_clear_object (&priv->term_font_bind);
   g_clear_object (&priv->term_zoom_bind);
   g_clear_object (&priv->term_theme_bind);
-  g_clear_object (&priv->term_opaque_bind);
   g_clear_object (&priv->term_scrollback_bind);
 
   g_set_object (&priv->terminal, term);
@@ -896,51 +837,9 @@ kgx_tab_connect_terminal (KgxTab      *self,
   priv->term_theme_bind = g_object_bind_property (self, "theme",
                                                   term, "theme",
                                                   G_BINDING_SYNC_CREATE);
-  priv->term_opaque_bind = g_object_bind_property (self, "opaque",
-                                                   term, "opaque",
-                                                   G_BINDING_SYNC_CREATE);
   priv->term_scrollback_bind = g_object_bind_property (self, "scrollback-lines",
                                                        term, "scrollback-lines",
                                                        G_BINDING_SYNC_CREATE);
-}
-
-
-void
-kgx_tab_set_pages (KgxTab   *self,
-                   KgxPages *pages)
-{
-  KgxTabPrivate *priv;
-
-  g_return_if_fail (KGX_IS_TAB (self));
-  g_return_if_fail (KGX_IS_PAGES (pages) || !pages);
-
-  priv = kgx_tab_get_instance_private (self);
-
-  g_clear_object (&priv->pages_font_bind);
-  g_clear_object (&priv->pages_zoom_bind);
-  g_clear_object (&priv->pages_theme_bind);
-  g_clear_object (&priv->pages_opaque_bind);
-  g_clear_object (&priv->pages_scrollback_bind);
-
-  if (pages == NULL) {
-    return;
-  }
-
-  priv->pages_font_bind = g_object_bind_property (pages, "font",
-                                                  self, "font",
-                                                  G_BINDING_SYNC_CREATE);
-  priv->pages_zoom_bind = g_object_bind_property (pages, "zoom",
-                                                  self, "zoom",
-                                                  G_BINDING_SYNC_CREATE);
-  priv->pages_theme_bind = g_object_bind_property (pages, "theme",
-                                                   self, "theme",
-                                                   G_BINDING_SYNC_CREATE);
-  priv->pages_opaque_bind = g_object_bind_property (pages, "opaque",
-                                                    self, "opaque",
-                                                    G_BINDING_SYNC_CREATE);
-  priv->pages_scrollback_bind = g_object_bind_property (pages, "scrollback-lines",
-                                                        self, "scrollback-lines",
-                                                        G_BINDING_SYNC_CREATE);
 }
 
 
@@ -1069,7 +968,8 @@ kgx_tab_push_child (KgxTab     *self,
 {
   GtkStyleContext *context;
   GPid pid = 0;
-  const char *exec = NULL;
+  GStrv argv;
+  g_autofree char *program = NULL;
   KgxStatus new_status = KGX_NONE;
   KgxTabPrivate *priv;
 
@@ -1079,9 +979,15 @@ kgx_tab_push_child (KgxTab     *self,
 
   context = gtk_widget_get_style_context (GTK_WIDGET (self));
   pid = kgx_process_get_pid (process);
-  exec = kgx_process_get_exec (process);
+  argv = kgx_process_get_argv (process);
 
-  if (G_UNLIKELY (g_str_has_prefix (exec, "ssh "))) {
+  if (G_LIKELY (argv[0] != NULL)) {
+    program = g_path_get_basename (argv[0]);
+  }
+
+  if (G_UNLIKELY (g_strcmp0 (program, "ssh") == 0 ||
+                  g_strcmp0 (program, "mosh-client") == 0 ||
+                  g_strcmp0 (program, "et") == 0)) {
     new_status |= push_type (priv->remote, pid, NULL, context, KGX_REMOTE);
   }
 
@@ -1224,23 +1130,26 @@ kgx_tab_get_children (KgxTab *self)
 
 
 void
-kgx_tab_accept_drop (KgxTab           *self,
-                     GtkSelectionData *selection_data)
+kgx_tab_accept_drop (KgxTab       *self,
+                     const GValue *value)
 {
   KgxTabPrivate *priv;
   g_autofree char *text = NULL;
+  g_auto (GStrv) uris = NULL;
 
   g_return_if_fail (KGX_IS_TAB (self));
 
   priv = kgx_tab_get_instance_private (self);
 
-  if (gtk_selection_data_get_length (selection_data) < 0)
-    return;
+  uris = g_strsplit (g_value_get_string (value), "\n", 0);
 
-  text = (char *) gtk_selection_data_get_text (selection_data);
+  kgx_util_transform_uris_to_quoted_fuse_paths (uris);
 
-  if (priv->terminal)
+  text = kgx_util_concat_uris (uris, NULL);
+
+  if (priv->terminal) {
     kgx_terminal_accept_paste (KGX_TERMINAL (priv->terminal), text);
+  }
 }
 
 
@@ -1265,26 +1174,36 @@ kgx_tab_set_initial_title (KgxTab     *self,
 }
 
 
-gboolean
-kgx_tab_key_press_event (KgxTab   *self,
-                         GdkEvent *event)
+void
+kgx_tab_set_pages (KgxTab   *self,
+                   KgxPages *pages)
 {
   KgxTabPrivate *priv;
-  GtkWidget *toplevel, *focus;
 
-  g_return_val_if_fail (KGX_IS_TAB (self), GDK_EVENT_PROPAGATE);
-  g_return_val_if_fail (event != NULL, GDK_EVENT_PROPAGATE);
+  g_return_if_fail (KGX_IS_TAB (self));
+  g_return_if_fail (KGX_IS_PAGES (pages) || !pages);
 
   priv = kgx_tab_get_instance_private (self);
-  toplevel = gtk_widget_get_toplevel (GTK_WIDGET (self));
 
-  if (!GTK_IS_WINDOW (toplevel))
-    return GDK_EVENT_PROPAGATE;
+  g_clear_object (&priv->pages_font_bind);
+  g_clear_object (&priv->pages_zoom_bind);
+  g_clear_object (&priv->pages_theme_bind);
+  g_clear_object (&priv->pages_scrollback_bind);
 
-  focus = gtk_window_get_focus (GTK_WINDOW (toplevel));
+  if (pages == NULL) {
+    return;
+  }
 
-  if (focus == GTK_WIDGET (priv->terminal))
-    return gtk_widget_event (GTK_WIDGET (priv->terminal), event);
-
-  return GDK_EVENT_PROPAGATE;
+  priv->pages_font_bind = g_object_bind_property (pages, "font",
+                                                  self, "font",
+                                                  G_BINDING_SYNC_CREATE);
+  priv->pages_zoom_bind = g_object_bind_property (pages, "zoom",
+                                                  self, "zoom",
+                                                  G_BINDING_SYNC_CREATE);
+  priv->pages_theme_bind = g_object_bind_property (pages, "theme",
+                                                   self, "theme",
+                                                   G_BINDING_SYNC_CREATE);
+  priv->pages_scrollback_bind = g_object_bind_property (pages, "scrollback-lines",
+                                                        self, "scrollback-lines",
+                                                        G_BINDING_SYNC_CREATE);
 }

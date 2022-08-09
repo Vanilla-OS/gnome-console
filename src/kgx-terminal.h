@@ -86,7 +86,6 @@ typedef enum /*< enum,prefix=KGX >*/
 /**
  * KgxTerminal:
  * @theme: the palette to use, see #KgxTerminal:theme
- * @opaque: is transparency enabled, see #KgxTerminal:opaque
  * @actions: action map for the context menu
  * @current_url: the address under the cursor
  * @match_id: regex ids for finding hyperlinks
@@ -99,19 +98,13 @@ struct _KgxTerminal {
 
   /*< public >*/
   KgxTheme    theme;
-  gboolean    opaque;
-  GActionMap *actions;
+  GtkWidget  *popup_menu;
 
   /* Hyperlinks */
   char       *current_url;
   int         match_id[KGX_TERMINAL_N_LINK_REGEX];
 
-  /* Gestures */
-  GtkGesture *long_press_gesture;
-
-  /* Menus */
-  GtkWidget *menu;
-  GtkWidget *touch_menu;
+  gboolean    popup_is_touch;
 };
 
 G_DECLARE_FINAL_TYPE (KgxTerminal, kgx_terminal, KGX, TERMINAL, VteTerminal)

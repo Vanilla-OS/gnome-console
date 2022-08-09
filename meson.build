@@ -1,4 +1,4 @@
-project('gnome-console', 'c', version: '42.beta',
+project('gnome-console', 'c', version: '43.beta',
   meson_version: '>= 0.59.0',
   default_options: [
     'werror=true',
@@ -9,11 +9,13 @@ project('gnome-console', 'c', version: '42.beta',
     'vte:werror=false',
     'vte:gir=false',
     'vte:vapi=false',
+    'vte:gtk3=false',
+    'vte:gtk4=true',
+    'adwaita:werror=false',
+    'adwaita:vapi=false',
+    'adwaita:introspection=disabled',
+    'adwaita:tests=false',
     'libsass:werror=false',
-    'handy:werror=false',
-    'handy:vapi=false',
-    'handy:introspection=disabled',
-    'handy:tests=false',
   ],
 )
 
@@ -63,11 +65,9 @@ config_h = vcs_tag( input: config_h_in,
                   command: ['git', 'rev-parse', '--short', 'HEAD'],
                  fallback: 'Devel')
 
-gtk_ver = 'GDK_VERSION_3_24'
+gtk_ver = 'GDK_VERSION_4_0'
 glib_ver = 'GLIB_VERSION_2_66'
 add_project_arguments([
-  '-DGDK_VERSION_MIN_REQUIRED=@0@'.format(gtk_ver),
-  '-DGDK_VERSION_MAX_ALLOWED=@0@'.format(gtk_ver),
   '-DGLIB_VERSION_MIN_REQUIRED=@0@'.format(glib_ver),
   '-DGLIB_VERSION_MAX_ALLOWED=@0@'.format(glib_ver),
   '-DG_LOG_USE_STRUCTURED',
@@ -110,13 +110,6 @@ add_project_arguments(
 
 subdir('data')
 subdir('src')
-
-nautilus_dep = dependency('libnautilus-extension', required: get_option('nautilus'))
-if nautilus_dep.found()
-  gio_unix = dependency('gio-unix-2.0')
-  subdir('nautilus')
-endif
-
 subdir('po')
 
 gnome.post_install(
