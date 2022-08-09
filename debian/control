@@ -14,7 +14,6 @@ Build-Depends:
  libpcre2-dev (>= 10.00),
  libvte-2.91-gtk4-dev (>= 0.69.91),
  meson,
- sassc,
 # Tests:
  appstream-util <!nocheck>,
 Standards-Version: 4.6.1
