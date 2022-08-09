@@ -1,3 +1,37 @@
+gnome-console (43~beta-1) unstable; urgency=medium
+
+  [ Arnaud Ferraris ]
+  * New upstream version
+  * d/gbp.conf: improve for easing work with `gbp import-orig`
+    By using `upstream-vcs-tag` instead of `upstream-tag` we can import
+    upstream changes more easily, while still retaining the full git
+    history.
+  * d/control: update my email and bump Standards-Version.
+    No other change needed, take this opportunity to sort build-deps.
+  * d/gbp.conf: set `multimaint-merge` to true
+  * d/control: drop obsolete build dependency
+  * d/copyright: update for new upstream release
+
+  [ Jeremy Bicha ]
+  * debian/control: Recommend nautilus-extension-gnome-console
+    (Closes: #1008833)
+  * Add debian/postinst & debian/prerm to register kgx
+    as an x-terminal-emulator with priority 40 (Closes: #1008805) (LP: #1977767)
+  * Revert "debian/control: Recommend nautilus-extension-gnome-console"
+    This reverts commit 06156a66d9799873e3235004b60cbd86f59e0a63.
+  * Drop patch applied in new release
+  * Build with gtk4 and libadwaita
+  * Drop obsolete nautilus-extension-gnome-console
+
+  [ James Tocknell ]
+  * Add x-terminal-emulator to provides
+
+  [ Sergio Costas Rodriguez ]
+  * Add patch to open new tabs in the current working directory
+    (Closes: #1008806) (LP: #1973825)
+
+ -- Arnaud Ferraris <aferraris@debian.org>  Tue, 09 Aug 2022 15:22:49 +0200
+
 gnome-console (42~beta-2) unstable; urgency=medium
 
   * Source-only upload for allowing testing transition, no other change
