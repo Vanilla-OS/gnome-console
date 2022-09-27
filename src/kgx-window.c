@@ -35,7 +35,6 @@
 
 #include "kgx-window.h"
 #include "kgx-application.h"
-#include "kgx-process.h"
 #include "kgx-close-dialog.h"
 #include "kgx-pages.h"
 #include "kgx-tab-button.h"
@@ -47,7 +46,7 @@ G_DEFINE_TYPE (KgxWindow, kgx_window, ADW_TYPE_APPLICATION_WINDOW)
 
 enum {
   PROP_0,
-  PROP_APPLICATION,
+  PROP_SETTINGS,
   LAST_PROP
 };
 
@@ -55,80 +54,11 @@ static GParamSpec *pspecs[LAST_PROP] = { NULL, };
 
 
 static void
-update_zoom (KgxWindow      *self,
-             KgxApplication *app)
-{
-  g_autofree char *label = NULL;
-  gdouble zoom;
-
-  g_object_get (app,
-                "font-scale", &zoom,
-                NULL);
-
-  label = g_strdup_printf ("%i%%",
-                           (int) round (zoom * 100));
-  gtk_label_set_label (GTK_LABEL (self->zoom_level), label);
-}
-
-
-static void
-zoomed (GObject *object, GParamSpec *pspec, gpointer data)
-{
-  KgxWindow *self = KGX_WINDOW (data);
-
-  update_zoom (self, KGX_APPLICATION (object));
-}
-
-
-static void
-kgx_window_constructed (GObject *object)
-{
-  KgxWindow       *self = KGX_WINDOW (object);
-  GtkApplication  *application = NULL;
-  AdwStyleManager *style_manager;
-
-  G_OBJECT_CLASS (kgx_window_parent_class)->constructed (object);
-
-  application = gtk_window_get_application (GTK_WINDOW (self));
-  style_manager = adw_style_manager_get_default ();
-
-  g_object_bind_property (application, "theme",
-                          self->pages, "theme",
-                          G_BINDING_SYNC_CREATE);
-  g_object_bind_property (application, "theme",
-                          self->theme_switcher, "theme",
-                          G_BINDING_SYNC_CREATE |
-                          G_BINDING_BIDIRECTIONAL);
-  g_object_bind_property (style_manager, "system-supports-color-schemes",
-                          self->theme_switcher, "show-system",
-                          G_BINDING_SYNC_CREATE);
-
-  g_object_bind_property (application, "font",
-                          self->pages, "font",
-                          G_BINDING_SYNC_CREATE);
-
-  g_object_bind_property (application, "font-scale",
-                          self->pages, "zoom",
-                          G_BINDING_SYNC_CREATE);
-
-  g_object_bind_property (application, "scrollback-lines",
-                          self->pages, "scrollback-lines",
-                          G_BINDING_SYNC_CREATE);
-
-  g_signal_connect_object (application,
-                           "notify::font-scale", G_CALLBACK (zoomed),
-                           self,
-                           0);
-
-  update_zoom (self, KGX_APPLICATION (application));
-}
-
-
-static void
 kgx_window_dispose (GObject *object)
 {
   KgxWindow *self = KGX_WINDOW (object);
 
+  g_clear_object (&self->settings);
   g_clear_object (&self->tab_actions);
 
   G_OBJECT_CLASS (kgx_window_parent_class)->dispose (object);
@@ -144,9 +74,8 @@ kgx_window_set_property (GObject      *object,
   KgxWindow *self = KGX_WINDOW (object);
 
   switch (property_id) {
-    case PROP_APPLICATION:
-      gtk_window_set_application (GTK_WINDOW (self),
-                                  g_value_get_object (value));
+    case PROP_SETTINGS:
+      g_set_object (&self->settings, g_value_get_object (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -164,9 +93,8 @@ kgx_window_get_property (GObject    *object,
   KgxWindow *self = KGX_WINDOW (object);
 
   switch (property_id) {
-    case PROP_APPLICATION:
-      g_value_set_object (value,
-                          gtk_window_get_application (GTK_WINDOW (self)));
+    case PROP_SETTINGS:
+      g_value_set_object (value, self->settings);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -194,6 +122,12 @@ kgx_window_close_request (GtkWindow *window)
   children = kgx_pages_get_children (KGX_PAGES (self->pages));
 
   if (children->len < 1 || self->close_anyway) {
+    if (gtk_window_is_active (GTK_WINDOW (self))) {
+      int width, height;
+      gtk_window_get_default_size (GTK_WINDOW (self), &width, &height);
+      kgx_settings_set_custom_size (self->settings, width, height);
+    }
+
     return FALSE; // Aka no, I don’t want to block closing
   }
 
@@ -221,15 +155,6 @@ active_changed (GObject *object, GParamSpec *pspec, gpointer data)
 
 
 static void
-size_changed (KgxWindow  *self)
-{
-  gtk_window_get_default_size (GTK_WINDOW (self),
-                               &self->current_width,
-                               &self->current_height);
-}
-
-
-static void
 zoom (KgxPages  *pages,
       KgxZoom    dir,
       KgxWindow *self)
@@ -248,6 +173,27 @@ zoom (KgxPages  *pages,
       g_return_if_reached ();
   }
   g_action_activate (action, NULL);
+}
+
+
+static KgxPages *
+create_tearoff_host (KgxPages *pages, KgxWindow *self)
+{
+  GtkApplication *application = gtk_window_get_application (GTK_WINDOW (self));
+  KgxWindow *new_window;
+  int width, height;
+
+  gtk_window_get_default_size (GTK_WINDOW (self), &width, &height);
+
+  new_window = g_object_new (KGX_TYPE_WINDOW,
+                             "application", application,
+                             "settings", self->settings,
+                             "default-width", width,
+                             "default-height", height,
+                             NULL);
+  gtk_window_present (GTK_WINDOW (new_window));
+
+  return KGX_PAGES (new_window->pages);
 }
 
 
@@ -305,24 +251,16 @@ kgx_window_class_init (KgxWindowClass *klass)
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
   GtkWindowClass *window_class = GTK_WINDOW_CLASS (klass);
 
-  object_class->constructed = kgx_window_constructed;
   object_class->dispose = kgx_window_dispose;
   object_class->set_property = kgx_window_set_property;
   object_class->get_property = kgx_window_get_property;
 
   window_class->close_request = kgx_window_close_request;
 
-  /**
-   * KgxWindow:application:
-   *
-   * Proxy for #GtkWindow #GtkWindow:application but with %G_PARAM_CONSTRUCT,
-   * simple as that
-   */
-  pspecs[PROP_APPLICATION] =
-    g_param_spec_object ("application", "Application",
-                         "The application the window is part of",
-                         KGX_TYPE_APPLICATION,
-                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
+  pspecs[PROP_SETTINGS] =
+    g_param_spec_object ("settings", NULL, NULL,
+                         KGX_TYPE_SETTINGS,
+                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, LAST_PROP, pspecs);
 
@@ -339,14 +277,29 @@ kgx_window_class_init (KgxWindowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, tab_switcher);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, pages);
   gtk_widget_class_bind_template_child (widget_class, KgxWindow, primary_menu);
+  gtk_widget_class_bind_template_child (widget_class, KgxWindow, settings_binds);
 
   gtk_widget_class_bind_template_callback (widget_class, active_changed);
-  gtk_widget_class_bind_template_callback (widget_class, size_changed);
 
   gtk_widget_class_bind_template_callback (widget_class, zoom);
+  gtk_widget_class_bind_template_callback (widget_class, create_tearoff_host);
   gtk_widget_class_bind_template_callback (widget_class, status_changed);
   gtk_widget_class_bind_template_callback (widget_class, extra_drag_drop);
   gtk_widget_class_bind_template_callback (widget_class, new_tab_cb);
+}
+
+
+static gboolean
+scale_to_label (GBinding     *binding,
+                const GValue *from_value,
+                GValue       *to_value,
+                gpointer      user_data)
+{
+  int zoom = round (g_value_get_double (from_value) * 100);
+
+  g_value_take_string (to_value, g_strdup_printf ("%i%%", zoom));
+
+  return TRUE;
 }
 
 
@@ -532,12 +485,28 @@ kgx_window_init (KgxWindow *self)
 {
   g_autoptr (GtkWindowGroup) group = NULL;
   g_autoptr (GPropertyAction) pact = NULL;
+  AdwStyleManager *style_manager;
 
   g_type_ensure (KGX_TYPE_TAB_BUTTON);
   g_type_ensure (KGX_TYPE_TAB_SWITCHER);
   g_type_ensure (KGX_TYPE_THEME_SWITCHER);
 
   gtk_widget_init_template (GTK_WIDGET (self));
+
+  style_manager = adw_style_manager_get_default ();
+
+  g_object_bind_property (style_manager, "system-supports-color-schemes",
+                          self->theme_switcher, "show-system",
+                          G_BINDING_SYNC_CREATE);
+
+  g_binding_group_bind (self->settings_binds, "theme",
+                        self->theme_switcher, "theme",
+                        G_BINDING_SYNC_CREATE | G_BINDING_BIDIRECTIONAL);
+
+  g_binding_group_bind_full (self->settings_binds, "font-scale",
+                             self->zoom_level, "label",
+                             G_BINDING_SYNC_CREATE | G_BINDING_BIDIRECTIONAL,
+                             scale_to_label, NULL, NULL, NULL);
 
   g_action_map_add_action_entries (G_ACTION_MAP (self),
                                    win_entries,
@@ -629,18 +598,4 @@ kgx_window_get_pages (KgxWindow *self)
   g_return_val_if_fail (KGX_IS_WINDOW (self), NULL);
 
   return KGX_PAGES (self->pages);
-}
-
-
-void
-kgx_window_get_size (KgxWindow *self,
-                     int       *width,
-                     int       *height)
-{
-  g_return_if_fail (KGX_IS_WINDOW (self));
-
-  if (width)
-    *width = self->current_width;
-  if (height)
-    *height = self->current_height;
 }

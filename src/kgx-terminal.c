@@ -25,6 +25,8 @@
  * menu (via #GtkPopover) and link detection
  */
 
+#include "kgx-config.h"
+
 #include <glib/gi18n.h>
 #include <adwaita.h>
 #include <vte/vte.h>
@@ -32,9 +34,11 @@
 #include <pcre2.h>
 
 #include "rgba.h"
+#include "xdg-fm1.h"
 
-#include "kgx-config.h"
 #include "kgx-terminal.h"
+#include "kgx-settings.h"
+#include "kgx-marshals.h"
 
 /*       Regex adapted from TerminalWidget.vala in Pantheon Terminal       */
 
@@ -54,7 +58,9 @@
 #define USERPASS USERCHARS_CLASS "+(?:" PASSCHARS_CLASS "+)?"
 #define URLPATH "(?:(/" PATHCHARS_CLASS "+(?:[(]" PATHCHARS_CLASS "*[)])*" PATHCHARS_CLASS "*)*" PATHTERM_CLASS ")?"
 
-static const gchar* links[KGX_TERMINAL_N_LINK_REGEX] = {
+#define KGX_TERMINAL_N_LINK_REGEX 5
+
+static const char *links[KGX_TERMINAL_N_LINK_REGEX] = {
   SCHEME "//(?:" USERPASS "\\@)?" HOST PORT URLPATH,
   "(?:www|ftp)" HOSTCHARS_CLASS "*\\." HOST PORT URLPATH,
   "(?:callto:|h323:|sip:)" USERCHARS_CLASS "[" USERCHARS ".]*(?:" PORT "/[a-z0-9]+)?\\@" HOST,
@@ -64,11 +70,36 @@ static const gchar* links[KGX_TERMINAL_N_LINK_REGEX] = {
 
 /*       Regex adapted from TerminalWidget.vala in Pantheon Terminal       */
 
+/**
+ * KgxTerminal:
+ * @theme: the palette to use, see #KgxTerminal:theme
+ * @actions: action map for the context menu
+ * @current_url: the address under the cursor
+ * @match_id: regex ids for finding hyperlinks
+ *
+ * Stability: Private
+ */
+struct _KgxTerminal {
+  VteTerminal parent_instance;
+
+  KgxSettings   *settings;
+  GSignalGroup  *settings_signals;
+  GBindingGroup *settings_binds;
+  GtkWidget  *popup_menu;
+
+  /* Hyperlinks */
+  char       *current_url;
+  int         match_id[KGX_TERMINAL_N_LINK_REGEX];
+
+  gboolean    popup_is_touch;
+};
+
+
 G_DEFINE_TYPE (KgxTerminal, kgx_terminal, VTE_TYPE_TERMINAL)
 
 enum {
   PROP_0,
-  PROP_THEME,
+  PROP_SETTINGS,
   PROP_PATH,
   LAST_PROP
 };
@@ -90,13 +121,18 @@ kgx_terminal_dispose (GObject *object)
   g_clear_pointer (&self->current_url, g_free);
   g_clear_pointer (&self->popup_menu, gtk_widget_unparent);
 
+  g_clear_object (&self->settings);
+  g_clear_object (&self->settings_signals);
+  g_clear_object (&self->settings_binds);
+
   G_OBJECT_CLASS (kgx_terminal_parent_class)->dispose (object);
 }
 
 
 static void
-update_terminal_colors (KgxTerminal *self)
+update_terminal_colours (KgxTerminal *self)
 {
+  KgxTheme current_theme;
   KgxTheme resolved_theme;
   GdkRGBA fg;
   GdkRGBA bg;
@@ -121,7 +157,13 @@ update_terminal_colors (KgxTerminal *self)
     GDK_RGBA ("f6f5f4"), // Bright White
   };
 
-  if (self->theme == KGX_THEME_AUTO) {
+  if (!self->settings) {
+    return;
+  }
+
+  g_object_get (self->settings, "theme", &current_theme, NULL);
+
+  if (current_theme == KGX_THEME_AUTO) {
     AdwStyleManager *manager = adw_style_manager_get_default ();
 
     if (adw_style_manager_get_dark (manager)) {
@@ -130,7 +172,7 @@ update_terminal_colors (KgxTerminal *self)
       resolved_theme = KGX_THEME_DAY;
     }
   } else {
-    resolved_theme = self->theme;
+    resolved_theme = current_theme;
   }
 
   switch (resolved_theme) {
@@ -155,21 +197,6 @@ update_terminal_colors (KgxTerminal *self)
 
 
 static void
-kgx_terminal_set_theme (KgxTerminal *self,
-                        KgxTheme     theme)
-{
-  if (self->theme == theme) {
-    return;
-  }
-
-  self->theme = theme;
-  update_terminal_colors (self);
-
-  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_THEME]);
-}
-
-
-static void
 kgx_terminal_set_property (GObject      *object,
                            guint         property_id,
                            const GValue *value,
@@ -178,14 +205,16 @@ kgx_terminal_set_property (GObject      *object,
   KgxTerminal *self = KGX_TERMINAL (object);
 
   switch (property_id) {
-    case PROP_THEME:
-      kgx_terminal_set_theme (self, g_value_get_enum (value));
+    case PROP_SETTINGS:
+      g_set_object (&self->settings, g_value_get_object (value));
+      update_terminal_colours (self);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
   }
 }
+
 
 static void
 kgx_terminal_get_property (GObject    *object,
@@ -198,8 +227,8 @@ kgx_terminal_get_property (GObject    *object,
   g_autoptr (GFile) path = NULL;
 
   switch (property_id) {
-    case PROP_THEME:
-      g_value_set_enum (value, self->theme);
+    case PROP_SETTINGS:
+      g_value_set_object (value, self->settings);
       break;
     case PROP_PATH:
       if ((uri = vte_terminal_get_current_file_uri (VTE_TERMINAL (self)))) {
@@ -383,57 +412,110 @@ select_all_activated (KgxTerminal *self)
 }
 
 
+typedef struct {
+  GStrv     uris;
+  gboolean  show_folders;
+} ShowData;
+
+
+static void
+clear_show_data (gpointer data)
+{
+  ShowData *self = data;
+
+  g_clear_pointer (&self->uris, g_strfreev);
+  g_free (self);
+}
+
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ShowData, clear_show_data)
+
+
+static void
+complete_call (GObject *source, GAsyncResult *res, gpointer data)
+{
+  g_autoptr (GError) error = NULL;
+  g_autoptr (ShowData) show = data;
+
+  if (show->show_folders) {
+    xdg_file_manager1_call_show_folders_finish (XDG_FILE_MANAGER1 (source),
+                                                res,
+                                                &error);
+  } else {
+    xdg_file_manager1_call_show_items_finish (XDG_FILE_MANAGER1 (source),
+                                              res,
+                                              &error);
+  }
+
+  if (error) {
+    g_warning ("term.show-in-files: D-Bus call failed %s", error->message);
+  }
+}
+
+
+static void
+got_proxy (GObject *source, GAsyncResult *res, gpointer data)
+{
+  g_autoptr (GError) error = NULL;
+  g_autoptr (XdgFileManager1) fm = NULL;
+  g_autoptr (ShowData) show = data;
+  g_auto (GStrv) uris = g_steal_pointer (&show->uris);
+
+  fm = xdg_file_manager1_proxy_new_finish (res, &error);
+
+  if (error) {
+    g_warning ("term.show-in-files: D-Bus connect failed %s", error->message);
+    return;
+  }
+
+  if (show->show_folders) {
+    xdg_file_manager1_call_show_folders (fm,
+                                         (const char *const *) uris,
+                                         "",
+                                         NULL,
+                                         complete_call,
+                                         g_steal_pointer (&show));
+  } else {
+    xdg_file_manager1_call_show_items (fm,
+                                       (const char *const *) uris,
+                                       "",
+                                       NULL,
+                                       complete_call,
+                                       g_steal_pointer (&show));
+  }
+}
+
+
 static void
 show_in_files_activated (KgxTerminal *self)
 {
-  g_autoptr (GDBusProxy) proxy = NULL;
-  g_autoptr (GVariant) retval = NULL;
-  g_autoptr (GVariantBuilder) builder = NULL;
-  g_autoptr (GError) error = NULL;
+  g_autoptr (ShowData) data = g_new0 (ShowData, 1);
+  g_autoptr (GStrvBuilder) builder = g_strv_builder_new ();
   const char *uri = NULL;
-  const char *method;
 
+  data->show_folders = FALSE;
   uri = vte_terminal_get_current_file_uri (VTE_TERMINAL (self));
-  method = "ShowItems";
 
   if (uri == NULL) {
+    data->show_folders = TRUE;
     uri = vte_terminal_get_current_directory_uri (VTE_TERMINAL (self));
-    method = "ShowFolders";
   }
 
   if (uri == NULL) {
-    g_warning ("win.show-in-files: no file");
+    g_warning ("term.show-in-files: no file");
     return;
   }
 
-  proxy = g_dbus_proxy_new_for_bus_sync (G_BUS_TYPE_SESSION,
-                                         G_DBUS_PROXY_FLAGS_NONE,
-                                         NULL,
-                                         "org.freedesktop.FileManager1",
-                                         "/org/freedesktop/FileManager1",
-                                         "org.freedesktop.FileManager1",
-                                         NULL, &error);
+  g_strv_builder_add (builder, uri);
+  data->uris = g_strv_builder_end (builder);
 
-  if (!proxy) {
-    g_warning ("win.show-in-files: D-Bus connect failed %s", error->message);
-    return;
-  }
-
-  builder = g_variant_builder_new (G_VARIANT_TYPE ("as"));
-  g_variant_builder_add (builder, "s", uri);
-
-  retval = g_dbus_proxy_call_sync (proxy,
-                                   method,
-                                   g_variant_new ("(ass)",
-                                                  builder,
-                                                  ""),
-                                   G_DBUS_CALL_FLAGS_NONE,
-                                   -1, NULL, &error);
-
-  if (!retval) {
-    g_warning ("win.show-in-files: D-Bus call failed %s", error->message);
-    return;
-  }
+  xdg_file_manager1_proxy_new_for_bus (G_BUS_TYPE_SESSION,
+                                       G_DBUS_PROXY_FLAGS_NONE,
+                                       "org.freedesktop.FileManager1",
+                                       "/org/freedesktop/FileManager1",
+                                       NULL,
+                                       got_proxy,
+                                       g_steal_pointer (&data));
 }
 
 
@@ -485,21 +567,10 @@ kgx_terminal_class_init (KgxTerminalClass *klass)
   widget_class->size_allocate = kgx_terminal_size_allocate;
   widget_class->direction_changed = kgx_terminal_direction_changed;
 
-  /**
-   * KgxTerminal:theme:
-   *
-   * The palette to use, one of the values of #KgxTheme
-   *
-   * Officially only "night" exists, "hacker" is just a little fun
-   *
-   * Bound to #KgxApplication:theme on the #KgxApplication
-   *
-   * Stability: Private
-   */
-  pspecs[PROP_THEME] =
-    g_param_spec_enum ("theme", "Theme", "Terminal theme",
-                       KGX_TYPE_THEME, KGX_THEME_NIGHT,
-                       G_PARAM_READWRITE);
+  pspecs[PROP_SETTINGS] =
+    g_param_spec_object ("settings", NULL, NULL,
+                         KGX_TYPE_SETTINGS,
+                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
 
   /**
    * KgxTerminal:path:
@@ -517,7 +588,8 @@ kgx_terminal_class_init (KgxTerminalClass *klass)
   signals[SIZE_CHANGED] = g_signal_new ("size-changed",
                                         G_TYPE_FROM_CLASS (klass),
                                         G_SIGNAL_RUN_LAST,
-                                        0, NULL, NULL, NULL,
+                                        0, NULL, NULL,
+                                        kgx_marshals_VOID__UINT_UINT,
                                         G_TYPE_NONE,
                                         2,
                                         G_TYPE_UINT,
@@ -577,7 +649,7 @@ clear_paste_data (gpointer data)
   g_clear_weak_pointer (&self->dest);
   g_free (self->text);
   g_free (self);
-} 
+}
 
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (PasteData, clear_paste_data)
@@ -661,7 +733,7 @@ location_changed (KgxTerminal *self)
   value = vte_terminal_get_current_file_uri (VTE_TERMINAL (self)) ||
             vte_terminal_get_current_directory_uri (VTE_TERMINAL (self));
 
-  gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.show-in-file", value);
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.show-in-files", value);
 
   g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_PATH]);
 }
@@ -670,8 +742,12 @@ location_changed (KgxTerminal *self)
 static void
 dark_changed (KgxTerminal *self)
 {
-  if (self->theme == KGX_THEME_AUTO) {
-    update_terminal_colors (self);
+  KgxTheme theme;
+
+  g_object_get (self->settings, "theme", &theme, NULL);
+
+  if (theme == KGX_THEME_AUTO) {
+    update_terminal_colours (self);
   }
 }
 
@@ -747,7 +823,27 @@ kgx_terminal_init (KgxTerminal *self)
                            "notify::dark", G_CALLBACK (dark_changed),
                            self, G_CONNECT_SWAPPED);
 
-  update_terminal_colors (self);
+  self->settings_signals = g_signal_group_new (KGX_TYPE_SETTINGS);
+  g_object_bind_property (self, "settings",
+                          self->settings_signals, "target",
+                          G_BINDING_DEFAULT);
+  g_signal_group_connect_swapped (self->settings_signals,
+                                  "notify::theme", G_CALLBACK (update_terminal_colours),
+                                  self);
+
+  self->settings_binds = g_binding_group_new ();
+  g_object_bind_property (self, "settings",
+                          self->settings_binds, "source",
+                          G_BINDING_DEFAULT);
+  g_binding_group_bind (self->settings_binds, "font",
+                        self, "font-desc",
+                        G_BINDING_SYNC_CREATE);
+  g_binding_group_bind (self->settings_binds, "font-scale",
+                        self, "font-scale",
+                        G_BINDING_SYNC_CREATE);
+  g_binding_group_bind (self->settings_binds, "scrollback-lines",
+                        self, "scrollback-lines",
+                        G_BINDING_SYNC_CREATE);
 }
 
 

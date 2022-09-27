@@ -38,12 +38,26 @@ G_BEGIN_DECLS
  *
  * Stability: Private
  */
-typedef enum /*< flags,prefix=KGX >*/
-{
+typedef enum /*< flags,prefix=KGX >*/ {
   KGX_NONE = 0,              /*< nick=none >*/
   KGX_REMOTE = (1 << 0),     /*< nick=remote >*/
   KGX_PRIVILEGED = (1 << 1), /*< nick=privileged >*/
 } KgxStatus;
+
+
+/**
+ * KgxZoom:
+ * @KGX_ZOOM_IN: Make text bigger
+ * @KGX_ZOOM_OUT: Shrink text
+ *
+ * Indicates the zoom direction the zoom action was triggered for
+ *
+ * See #KgxPage::zoom, #KgxPages::zoom
+ */
+typedef enum /*< enum,prefix=KGX >*/ {
+  KGX_ZOOM_IN = 0,  /*< nick=in >*/
+  KGX_ZOOM_OUT = 1, /*< nick=out >*/
+} KgxZoom;
 
 
 #ifndef __GTK_DOC_IGNORE__
@@ -74,14 +88,15 @@ struct _KgxTabClass
   GPid (*start_finish) (KgxTab               *tab,
                         GAsyncResult         *res,
                         GError              **error);
+
+  void (*died)         (KgxTab               *self,
+                        GtkMessageType        type,
+                        const char           *message,
+                        gboolean              success);
 };
 
 
 guint       kgx_tab_get_id           (KgxTab               *self);
-void        kgx_tab_connect_terminal (KgxTab               *self,
-                                      KgxTerminal          *term);
-void        kgx_tab_set_pages        (KgxTab               *self,
-                                      KgxPages             *pages);
 void        kgx_tab_start            (KgxTab               *self,
                                       GAsyncReadyCallback   callback,
                                       gpointer              callback_data);
