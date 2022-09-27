@@ -8,7 +8,7 @@ Build-Depends:
  desktop-file-utils,
  gsettings-desktop-schemas-dev,
  libadwaita-1-dev (>= 1.2~beta),
- libglib2.0-dev (>= 2.66.0),
+ libglib2.0-dev (>= 2.72.0),
  libgtop2-dev,
  libgtk-4-dev,
  libpcre2-dev,
