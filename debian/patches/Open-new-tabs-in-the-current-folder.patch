@@ -37,24 +37,24 @@ https://gitlab.gnome.org/GNOME/console/-/merge_requests/99
  src/kgx-pages.h      |  2 ++
  src/kgx-simple-tab.c | 13 ++++++++++
  src/kgx-simple-tab.h |  2 +-
- src/kgx-terminal.c   | 72 ++++++++++++++++++++++++++++++++++++++++++++++++++++
- src/kgx-terminal.h   |  5 ++++
+ src/kgx-terminal.c   | 73 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/kgx-terminal.h   |  3 +++
  src/kgx-window.c     |  6 ++++-
- 7 files changed, 119 insertions(+), 2 deletions(-)
+ 7 files changed, 118 insertions(+), 2 deletions(-)
 
 diff --git a/src/kgx-pages.c b/src/kgx-pages.c
-index 4f94aee..162a694 100644
+index eeb029e..f4f0237 100644
 --- a/src/kgx-pages.c
 +++ b/src/kgx-pages.c
-@@ -30,6 +30,7 @@
- #include "kgx-config.h"
+@@ -32,6 +32,7 @@
  #include "kgx-pages.h"
  #include "kgx-tab.h"
+ #include "kgx-settings.h"
 +#include "kgx-simple-tab.h"
- #include "kgx-window.h"
- #include "kgx-terminal.h"
+ #include "kgx-marshals.h"
  
-@@ -896,3 +897,23 @@ kgx_pages_detach_page (KgxPages *self)
+ 
+@@ -787,3 +788,23 @@ kgx_pages_detach_page (KgxPages *self)
    new_view = create_window (ADW_TAB_VIEW (priv->view), self);
    adw_tab_view_transfer_page (ADW_TAB_VIEW (priv->view), page, new_view, 0);
  }
@@ -90,7 +90,7 @@ index 11b58b0..6d97077 100644
 +
  G_END_DECLS
 diff --git a/src/kgx-simple-tab.c b/src/kgx-simple-tab.c
-index db017ea..4c0d732 100644
+index 42b8389..c908bd1 100644
 --- a/src/kgx-simple-tab.c
 +++ b/src/kgx-simple-tab.c
 @@ -221,6 +221,7 @@ spawned (VtePty       *pty,
@@ -101,9 +101,9 @@ index db017ea..4c0d732 100644
    g_set_weak_pointer (&wait_data->self, start_data->self);
  
    g_child_watch_add (pid, wait_cb, g_steal_pointer (&wait_data));
-@@ -364,3 +365,15 @@ kgx_simple_tab_init (KgxSimpleTab *self)
- 
-   kgx_tab_connect_terminal (KGX_TAB (self), KGX_TERMINAL (self->terminal));
+@@ -362,3 +363,15 @@ kgx_simple_tab_init (KgxSimpleTab *self)
+ {
+   gtk_widget_init_template (GTK_WIDGET (self));
  }
 +
 +GFile *
@@ -130,18 +130,27 @@ index 4c82052..50968d6 100644
  
  G_END_DECLS
 diff --git a/src/kgx-terminal.c b/src/kgx-terminal.c
-index 33956e6..b8dc118 100644
+index b9ff115..a593407 100644
 --- a/src/kgx-terminal.c
 +++ b/src/kgx-terminal.c
-@@ -30,6 +30,7 @@
+@@ -32,6 +32,7 @@
  #include <vte/vte.h>
  #define PCRE2_CODE_UNIT_WIDTH 0
  #include <pcre2.h>
 +#include <unistd.h>
  
  #include "rgba.h"
+ #include "xdg-fm1.h"
+@@ -92,6 +93,8 @@ struct _KgxTerminal {
+   int         match_id[KGX_TERMINAL_N_LINK_REGEX];
  
-@@ -187,6 +188,62 @@ kgx_terminal_set_property (GObject      *object,
+   gboolean    popup_is_touch;
++  GPid pid;
++  GFileMonitor *pid_monitor;
+ };
+ 
+ 
+@@ -215,6 +218,61 @@ kgx_terminal_set_property (GObject      *object,
    }
  }
  
@@ -200,19 +209,18 @@ index 33956e6..b8dc118 100644
 +
 +  return NULL;
 +}
-+
+ 
  static void
  kgx_terminal_get_property (GObject    *object,
-                            guint       property_id,
-@@ -196,6 +253,7 @@ kgx_terminal_get_property (GObject    *object,
+@@ -225,6 +283,7 @@ kgx_terminal_get_property (GObject    *object,
    KgxTerminal *self = KGX_TERMINAL (object);
    const char *uri;
    g_autoptr (GFile) path = NULL;
 +  g_autofree const char *procpath = NULL;
  
    switch (property_id) {
-     case PROP_THEME:
-@@ -206,6 +264,8 @@ kgx_terminal_get_property (GObject    *object,
+     case PROP_SETTINGS:
+@@ -235,6 +294,8 @@ kgx_terminal_get_property (GObject    *object,
          path = g_file_new_for_uri (uri);
        } else if ((uri = vte_terminal_get_current_directory_uri (VTE_TERMINAL (self)))) {
          path = g_file_new_for_uri (uri);
@@ -221,7 +229,7 @@ index 33956e6..b8dc118 100644
        }
        g_value_set_object (value, path);
        break;
-@@ -683,6 +743,9 @@ kgx_terminal_init (KgxTerminal *self)
+@@ -759,6 +820,9 @@ kgx_terminal_init (KgxTerminal *self)
    GtkEventController *controller;
    GtkShortcut *shortcut;
  
@@ -231,7 +239,7 @@ index 33956e6..b8dc118 100644
    gesture = gtk_gesture_click_new ();
    gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), 0);
    g_signal_connect (gesture, "pressed", G_CALLBACK (pressed), self);
-@@ -751,6 +814,15 @@ kgx_terminal_init (KgxTerminal *self)
+@@ -847,6 +911,15 @@ kgx_terminal_init (KgxTerminal *self)
  }
  
  
@@ -248,19 +256,10 @@ index 33956e6..b8dc118 100644
  kgx_terminal_accept_paste (KgxTerminal *self,
                             const char  *text)
 diff --git a/src/kgx-terminal.h b/src/kgx-terminal.h
-index 6c689d4..d25d4cd 100644
+index be56ec7..818ebdd 100644
 --- a/src/kgx-terminal.h
 +++ b/src/kgx-terminal.h
-@@ -105,6 +105,8 @@ struct _KgxTerminal {
-   int         match_id[KGX_TERMINAL_N_LINK_REGEX];
- 
-   gboolean    popup_is_touch;
-+  GPid pid;
-+  GFileMonitor *pid_monitor;
- };
- 
- G_DECLARE_FINAL_TYPE (KgxTerminal, kgx_terminal, KGX, TERMINAL, VteTerminal)
-@@ -112,4 +114,7 @@ G_DECLARE_FINAL_TYPE (KgxTerminal, kgx_terminal, KGX, TERMINAL, VteTerminal)
+@@ -30,4 +30,7 @@ G_DECLARE_FINAL_TYPE (KgxTerminal, kgx_terminal, KGX, TERMINAL, VteTerminal)
  void kgx_terminal_accept_paste (KgxTerminal *self,
                                  const char  *text);
  
@@ -269,10 +268,10 @@ index 6c689d4..d25d4cd 100644
 +
  G_END_DECLS
 diff --git a/src/kgx-window.c b/src/kgx-window.c
-index 9c63bb2..d2e4940 100644
+index 8974059..a358ada 100644
 --- a/src/kgx-window.c
 +++ b/src/kgx-window.c
-@@ -608,10 +608,14 @@ GFile *
+@@ -577,10 +577,14 @@ GFile *
  kgx_window_get_working_dir (KgxWindow *self)
  {
    GFile *file = NULL;
