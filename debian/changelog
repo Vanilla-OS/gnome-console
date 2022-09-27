@@ -1,3 +1,23 @@
+gnome-console (43.0-1) unstable; urgency=medium
+
+  [ Arnaud Ferraris ]
+  * d/control: transfer package to the Debian GNOME team.
+    This is now a core GNOME package, maintaining it within the GNOME team
+    makes more sense.
+  * d/control: update minimum glib version.
+    Upstream now requires glib >= 2.72, let's reflect that.
+  * d/patches: rebase on latest upstream version.
+
+  [ Debian Janitor ]
+  * Remove constraints unnecessary since buster (oldstable)
+    * Build-Depends: Drop versioned constraint on gsettings-desktop-schemas-dev
+      and libpcre2-dev.
+    * gnome-console: Drop versioned constraint on gsettings-desktop-schemas in
+      Depends.
+    Changes-By: deb-scrub-obsolete
+
+ -- Arnaud Ferraris <aferraris@debian.org>  Tue, 27 Sep 2022 10:11:11 +0200
+
 gnome-console (43~beta-1) unstable; urgency=medium
 
   [ Arnaud Ferraris ]
