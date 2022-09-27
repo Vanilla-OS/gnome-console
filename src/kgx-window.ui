@@ -31,8 +31,6 @@
   </menu>
   <template class="KgxWindow" parent="AdwApplicationWindow">
     <signal name="notify::is-active" handler="active_changed" swapped="no"/>
-    <signal name="notify::default-width" handler="size_changed" swapped="no"/>
-    <signal name="notify::default-height" handler="size_changed" swapped="no"/>
     <property name="content">
       <object class="KgxTabSwitcher" id="tab_switcher">
         <signal name="new-tab" handler="new_tab_cb" swapped="no"/>
@@ -151,6 +149,7 @@
               <object class="KgxPages" id="pages">
                 <property name="is-active" bind-source="KgxWindow" bind-property="is-active" bind-flags="sync-create" />
                 <signal name="zoom" handler="zoom" swapped="no"/>
+                <signal name="create-tearoff-host" handler="create_tearoff_host" swapped="no"/>
                 <signal name="notify::status" handler="status_changed" swapped="yes" />
               </object>
             </child>
@@ -182,4 +181,7 @@
       <class name="terminal-window"/>
     </style>
   </template>
+  <object class="GBindingGroup" id="settings_binds">
+    <property name="source" bind-source="KgxWindow" bind-property="settings" bind-flags="sync-create"/>
+  </object>
 </interface>
