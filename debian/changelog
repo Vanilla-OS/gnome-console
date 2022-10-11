@@ -1,3 +1,10 @@
+gnome-console (43.0-2) unstable; urgency=medium
+
+  * Build-Depend on dh-sequence-gnome & opt in to Ubuntu language packs
+  * Update debian/gbp.conf, debian/watch, & DEB_LDFLAGS for team style
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Tue, 11 Oct 2022 16:02:59 -0400
+
 gnome-console (43.0-1) unstable; urgency=medium
 
   [ Arnaud Ferraris ]
