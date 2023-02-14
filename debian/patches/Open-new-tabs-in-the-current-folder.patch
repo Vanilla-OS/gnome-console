@@ -43,7 +43,7 @@ https://gitlab.gnome.org/GNOME/console/-/merge_requests/99
  7 files changed, 118 insertions(+), 2 deletions(-)
 
 diff --git a/src/kgx-pages.c b/src/kgx-pages.c
-index eeb029e..f4f0237 100644
+index 6b146aa..9565558 100644
 --- a/src/kgx-pages.c
 +++ b/src/kgx-pages.c
 @@ -32,6 +32,7 @@
@@ -54,9 +54,9 @@ index eeb029e..f4f0237 100644
  #include "kgx-marshals.h"
  
  
-@@ -787,3 +788,23 @@ kgx_pages_detach_page (KgxPages *self)
-   new_view = create_window (ADW_TAB_VIEW (priv->view), self);
-   adw_tab_view_transfer_page (ADW_TAB_VIEW (priv->view), page, new_view, 0);
+@@ -866,3 +867,23 @@ kgx_pages_get_selected_page (KgxPages  *self)
+ 
+   return adw_tab_view_get_selected_page (ADW_TAB_VIEW (priv->view));
  }
 +
 +
@@ -79,12 +79,12 @@ index eeb029e..f4f0237 100644
 +  return kgx_simple_tab_get_current_path (KGX_SIMPLE_TAB (tab));
 +}
 diff --git a/src/kgx-pages.h b/src/kgx-pages.h
-index 11b58b0..6d97077 100644
+index f8c1b13..d87790c 100644
 --- a/src/kgx-pages.h
 +++ b/src/kgx-pages.h
-@@ -54,4 +54,6 @@ KgxStatus   kgx_pages_current_status (KgxPages   *self);
- void        kgx_pages_close_page          (KgxPages  *self);
+@@ -55,4 +55,6 @@ void        kgx_pages_close_page          (KgxPages  *self);
  void        kgx_pages_detach_page         (KgxPages  *self);
+ AdwTabPage *kgx_pages_get_selected_page   (KgxPages  *self);
  
 +GFile      *kgx_pages_get_current_path    (KgxPages  *self);
 +
@@ -268,10 +268,10 @@ index be56ec7..818ebdd 100644
 +
  G_END_DECLS
 diff --git a/src/kgx-window.c b/src/kgx-window.c
-index 8974059..a358ada 100644
+index 20edee1..36e9b98 100644
 --- a/src/kgx-window.c
 +++ b/src/kgx-window.c
-@@ -577,10 +577,14 @@ GFile *
+@@ -628,10 +628,14 @@ GFile *
  kgx_window_get_working_dir (KgxWindow *self)
  {
    GFile *file = NULL;
