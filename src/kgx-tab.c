@@ -270,6 +270,34 @@ start_spinner_timeout_cb (KgxTab *self)
 
 
 static void
+set_status (KgxTab    *self,
+            KgxStatus  status)
+{
+  KgxTabPrivate *priv = kgx_tab_get_instance_private (self);
+
+  if (priv->status == status) {
+    return;
+  }
+
+  priv->status = status;
+
+  if (status & KGX_REMOTE) {
+    gtk_widget_add_css_class (GTK_WIDGET (self), KGX_WINDOW_STYLE_REMOTE);
+  } else {
+    gtk_widget_remove_css_class (GTK_WIDGET (self), KGX_WINDOW_STYLE_REMOTE);
+  }
+
+  if (status & KGX_PRIVILEGED) {
+    gtk_widget_add_css_class (GTK_WIDGET (self), KGX_WINDOW_STYLE_ROOT);
+  } else {
+    gtk_widget_remove_css_class (GTK_WIDGET (self), KGX_WINDOW_STYLE_ROOT);
+  }
+
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_TAB_STATUS]);
+}
+
+
+static void
 kgx_tab_get_property (GObject    *object,
                       guint       property_id,
                       GValue     *value,
@@ -377,7 +405,7 @@ kgx_tab_set_property (GObject      *object,
       g_set_object (&priv->path, g_value_get_object (value));
       break;
     case PROP_TAB_STATUS:
-      priv->status = g_value_get_flags (value);
+      set_status (self, g_value_get_flags (value));
       break;
     case PROP_TAB_TOOLTIP:
       g_clear_pointer (&priv->tooltip, g_free);
@@ -882,8 +910,18 @@ kgx_tab_push_child (KgxTab     *self,
 
   if (G_UNLIKELY (g_strcmp0 (program, "ssh") == 0 ||
                   g_strcmp0 (program, "mosh-client") == 0 ||
+                  g_strcmp0 (program, "mosh") == 0 ||
                   g_strcmp0 (program, "et") == 0)) {
     new_status |= push_type (priv->remote, pid, NULL, context, KGX_REMOTE);
+  }
+
+  if (G_UNLIKELY (g_strcmp0 (program, "waypipe") == 0)) {
+    for (int i = 1; argv[i]; i++) {
+      if (G_UNLIKELY (g_strcmp0 (argv[i], "ssh") == 0)) {
+        new_status |= push_type (priv->remote, pid, NULL, context, KGX_REMOTE);
+        break;
+      }
+    }
   }
 
   if (G_UNLIKELY (kgx_process_get_is_root (process))) {
@@ -892,10 +930,7 @@ kgx_tab_push_child (KgxTab     *self,
 
   push_type (priv->children, pid, process, context, KGX_NONE);
 
-  if (priv->status != new_status) {
-    priv->status = new_status;
-    g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_TAB_STATUS]);
-  }
+  set_status (self, new_status);
 }
 
 
@@ -950,10 +985,7 @@ kgx_tab_pop_child (KgxTab     *self,
   new_status |= pop_type (priv->root, pid, context, KGX_PRIVILEGED);
   pop_type (priv->children, pid, context, KGX_NONE);
 
-  if (priv->status != new_status) {
-    priv->status = new_status;
-    g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_TAB_STATUS]);
-  }
+  set_status (self, new_status);
 
   if (!kgx_tab_is_active (self)) {
     g_autoptr (GNotification) noti = NULL;

@@ -1,9 +1,8 @@
 project('gnome-console', 'c',
-                  version: '43.0',
+                  version: '44.beta',
             meson_version: '>= 0.59.0',
                   license: 'GPL-3.0-or-later',
           default_options: [
-                             'werror=true',
                              'buildtype=debugoptimized',
                              'c_std=c17',
                              # So, apparently these two don’t currently do
@@ -17,7 +16,6 @@ project('gnome-console', 'c',
                              'vte:vapi=false',
                              'vte:gtk3=false',
                              'vte:gtk4=true',
-                             'adwaita:werror=false',
                              'adwaita:vapi=false',
                              'adwaita:introspection=disabled',
                              'adwaita:tests=false',
@@ -124,9 +122,9 @@ add_project_arguments(global_cargs, language: 'c')
 
 gio_dep = dependency('gio-2.0', version: '>= 2.72')
 gio_unix_dep = dependency('gio-unix-2.0', version: '>= 2.72')
-gtk_dep = dependency('gtk4', version: '>= 4.6')
-adw_dep = dependency('libadwaita-1', version: '>= 1.2.beta')
+adw_dep = dependency('libadwaita-1', version: '>= 1.3.alpha')
 vte_dep = dependency('vte-2.91-gtk4', version: '>= 0.69.91')
+gtk_dep = dependency('gtk4', version: '>= 4.6')
 gtop_dep = dependency('libgtop-2.0')
 pcre_dep = dependency('libpcre2-8', version: '>= 10.32')
 schemas_dep = dependency('gsettings-desktop-schemas')
