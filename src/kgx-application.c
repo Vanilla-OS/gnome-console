@@ -97,6 +97,7 @@ kgx_application_startup (GApplication *app)
   const char *const zoom_in_accels[] = { "<primary>plus", NULL };
   const char *const zoom_out_accels[] = { "<primary>minus", NULL };
   const char *const zoom_normal_accels[] = { "<primary>0", NULL };
+  const char *const show_tabs_accels[] = { "<shift><primary>o", NULL };
 
   g_resources_register (kgx_get_resource ());
 
@@ -123,6 +124,10 @@ kgx_application_startup (GApplication *app)
                                          "app.zoom-out", zoom_out_accels);
   gtk_application_set_accels_for_action (GTK_APPLICATION (app),
                                          "app.zoom-normal", zoom_normal_accels);
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app),
+                                         "win.show-tabs", show_tabs_accels);
+  gtk_application_set_accels_for_action (GTK_APPLICATION (app),
+                                         "win.show-tabs-desktop", show_tabs_accels);
 }
 
 
@@ -343,7 +348,7 @@ kgx_application_handle_local_options (GApplication *app,
   if (g_variant_dict_lookup (options, "about", "b", &about)) {
     if (about) {
       g_autofree char *copyright = g_strdup_printf (_("© %s Zander Brown"),
-                                                    "2019-2022");
+                                                    "2019-2023");
       struct winsize w;
       int padding = 0;
 
