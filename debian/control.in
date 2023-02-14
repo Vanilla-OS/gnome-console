@@ -20,8 +20,8 @@ Build-Depends:
 Standards-Version: 4.6.1
 X-Ubuntu-Use-Langpack: yes
 Homepage: https://gitlab.gnome.org/GNOME/console
-Vcs-Browser: https://salsa.debian.org/gnome-team/gnome-console
-Vcs-Git: https://salsa.debian.org/gnome-team/gnome-console.git
+Vcs-Browser: https://salsa.debian.org/gnome-team/gnome-console/tree/debian/bookworm
+Vcs-Git: https://salsa.debian.org/gnome-team/gnome-console.git -b debian/bookworm
 Rules-Requires-Root: no
 
 Package: gnome-console
