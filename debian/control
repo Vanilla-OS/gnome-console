@@ -6,7 +6,7 @@ Source: gnome-console
 Section: gnome
 Priority: optional
 Maintainer: Debian GNOME Maintainers <pkg-gnome-maintainers@lists.alioth.debian.org>
-Uploaders: Jeremy Bicha <jbicha@ubuntu.com>, Arnaud Ferraris <aferraris@debian.org>
+Uploaders: , Arnaud Ferraris <aferraris@debian.org>
 Build-Depends:
  debhelper-compat (= 13),
  desktop-file-utils,
@@ -21,7 +21,7 @@ Build-Depends:
  meson,
 # Tests:
  appstream-util <!nocheck>,
-Standards-Version: 4.6.1
+Standards-Version: 4.6.2
 X-Ubuntu-Use-Langpack: yes
 Homepage: https://gitlab.gnome.org/GNOME/console
 Vcs-Browser: https://salsa.debian.org/gnome-team/gnome-console
