@@ -1,6 +1,6 @@
-/* kgx-terminal.h
+/* kgx-preferences-window.h
  *
- * Copyright 2019-2023 Zander Brown
+ * Copyright 2023 Maximiliano Sandoval
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,31 +18,13 @@
 
 #pragma once
 
-#include <glib-object.h>
-#include <vte/vte.h>
+#include <adwaita.h>
 
 G_BEGIN_DECLS
 
-/**
- * KgxZoom:
- * @KGX_ZOOM_IN: Make text bigger
- * @KGX_ZOOM_OUT: Shrink text
- *
- * Indicates the zoom direction the zoom action was triggered for
- *
- * See #KgxTab::zoom, #KgxPages::zoom
- */
-typedef enum /*< enum,prefix=KGX >*/ {
-  KGX_ZOOM_IN = 0,  /*< nick=in >*/
-  KGX_ZOOM_OUT = 1, /*< nick=out >*/
-} KgxZoom;
+#define KGX_TYPE_PREFERENCES_WINDOW (kgx_preferences_window_get_type ())
 
+G_DECLARE_FINAL_TYPE (KgxPreferencesWindow, kgx_preferences_window, KGX, PREFERENCES_WINDOW, AdwPreferencesWindow)
 
-#define KGX_TYPE_TERMINAL kgx_terminal_get_type()
-
-G_DECLARE_FINAL_TYPE (KgxTerminal, kgx_terminal, KGX, TERMINAL, VteTerminal)
-
-void kgx_terminal_accept_paste (KgxTerminal *self,
-                                const char  *text);
 
 G_END_DECLS

@@ -5,8 +5,14 @@ kgx_sources = [
   'kgx-application.h',
   'kgx-close-dialog.c',
   'kgx-close-dialog.h',
+  'kgx-drop-target.c',
+  'kgx-drop-target.h',
+  'kgx-font-picker.c',
+  'kgx-font-picker.h',
   'kgx-pages.c',
   'kgx-pages.h',
+  'kgx-preferences-window.c',
+  'kgx-preferences-window.h',
   'kgx-process.c',
   'kgx-process.h',
   'kgx-proxy-info.c',
@@ -21,8 +27,6 @@ kgx_sources = [
   'kgx-terminal.h',
   'kgx-theme-switcher.c',
   'kgx-theme-switcher.h',
-  'kgx-util.c',
-  'kgx-util.h',
   'kgx-watcher.c',
   'kgx-watcher.h',
   'kgx-window.c',
@@ -58,6 +62,7 @@ kgx_sources += gnome.genmarshal('kgx-marshals',
                   sources: 'kgx-marshals.list',
                  internal: true,
                    prefix: 'kgx_marshals',
+       valist_marshallers: true,
 )
 
 kgx_sources += gnome.gdbus_codegen('xdg-fm1',
@@ -70,7 +75,8 @@ kgx_enums = gnome.mkenums_simple('kgx-enums',
                                     sources: [
                                       'kgx-close-dialog.h',
                                       'kgx-settings.h',
-                                      'kgx-tab.h'
+                                      'kgx-tab.h',
+                                      'kgx-terminal.h',
                                     ])
 
 kgx_lib = static_library (bin_name,
@@ -80,7 +86,7 @@ kgx_lib = static_library (bin_name,
 )
 kgx_inc = include_directories('.')
 
-kgx_dep = declare_dependency (sources: [config_h, kgx_enums],
+kgx_dep = declare_dependency (sources: [config_h, kgx_enums, kgx_schemas],
                               include_directories: kgx_inc,
                               link_with: kgx_lib,
                               dependencies: kgx_deps)

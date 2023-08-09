@@ -27,6 +27,10 @@
     </section>
     <section>
       <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">win.show-preferences-window</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
         <attribute name="action">win.show-help-overlay</attribute>
       </item>
@@ -37,22 +41,35 @@
     </section>
   </menu>
   <template class="KgxWindow" parent="AdwApplicationWindow">
+    <binding name="title">
+      <closure type='gchararray' function='title_or_fallback'>
+        <lookup name="title">pages</lookup>
+      </closure>
+    </binding>
     <signal name="notify::is-active" handler="active_changed" swapped="no"/>
+    <property name="width-request">360</property>
+    <property name="height-request">294</property>
     <property name="content">
       <object class="AdwTabOverview" id="tab_overview">
         <property name="enable-new-tab">True</property>
+        <property name="view" bind-source="pages" bind-property="tab-view" bind-flags="sync-create" />
         <signal name="create-tab" handler="create_tab_cb" swapped="yes"/>
         <property name="child">
-          <object class="GtkBox">
-            <property name="orientation">vertical</property>
+          <object class="AdwToolbarView" id="toolbar_view">
             <style>
               <class name="main-box"/>
             </style>
-            <child>
+            <property name="top-bar-style">raised</property>
+            <child type="top">
               <object class="GtkHeaderBar" id="header_bar">
                 <property name="title-widget">
-                  <object class="AdwWindowTitle" id="window_title">
-                    <property name="title" translatable="yes">King’s Cross</property>
+                  <object class="AdwWindowTitle">
+                    <binding name="subtitle">
+                      <closure type='gchararray' function='path_as_subtitle'>
+                        <lookup name="path">pages</lookup>
+                      </closure>
+                    </binding>
+                    <property name="title" bind-source="KgxWindow" bind-property="title" bind-flags="sync-create" />
                   </object>
                 </property>
                 <child type="start">
@@ -104,7 +121,14 @@
                                   <class name="numeric"/>
                                 </style>
                                 <child>
-                                  <object class="GtkLabel" id="zoom_level">
+                                  <object class="GtkLabel">
+                                    <binding name="label">
+                                      <closure type='gchararray' function='scale_as_label'>
+                                        <lookup name="font-scale">
+                                          <lookup name="settings">KgxWindow</lookup>
+                                        </lookup>
+                                      </closure>
+                                    </binding>
                                     <property name="width_chars">5</property>
                                   </object>
                                 </child>
@@ -130,13 +154,13 @@
                 </child>
                 <child type="end">
                   <object class="AdwTabButton" id="tab_button">
-                    <property name="visible" bind-source="KgxWindow" bind-property="narrow" bind-flags="sync-create"/>
+                    <property name="visible">False</property>
                     <property name="action-name">win.show-tabs</property>
+                    <property name="view" bind-source="pages" bind-property="tab-view" bind-flags="sync-create" />
                   </object>
                 </child>
                 <child type="end">
-                  <object class="GtkButton">
-                    <property name="visible" bind-source="KgxWindow" bind-property="narrow" bind-flags="sync-create|invert-boolean"/>
+                  <object class="GtkButton" id="new_tab_button">
                     <property name="can-focus">0</property>
                     <property name="receives-default">0</property>
                     <property name="action-name">win.new-tab</property>
@@ -146,50 +170,38 @@
                 </child>
               </object>
             </child>
-            <child>
-              <object class="GtkRevealer">
-                <property name="reveal-child" bind-source="KgxWindow" bind-property="narrow" bind-flags="sync-create|invert-boolean"/>
-                <property name="child">
-                  <object class="AdwTabBar" id="tab_bar">
-                    <signal name="extra-drag-drop" handler="extra_drag_drop" swapped="no"/>
-                  </object>
-                </property>
+            <child type="top">
+              <object class="AdwTabBar" id="tab_bar">
+                <property name="view" bind-source="pages" bind-property="tab-view" bind-flags="sync-create" />
+                <signal name="extra-drag-drop" handler="extra_drag_drop" swapped="no"/>
               </object>
             </child>
             <child>
               <object class="KgxPages" id="pages">
                 <property name="settings" bind-source="KgxWindow" bind-property="settings" bind-flags="sync-create" />
                 <property name="is-active" bind-source="KgxWindow" bind-property="is-active" bind-flags="sync-create" />
+                <property name="search-mode-enabled" bind-source="KgxWindow" bind-property="search-mode-enabled" bind-flags="bidirectional" />
                 <signal name="zoom" handler="zoom" swapped="no"/>
                 <signal name="create-tearoff-host" handler="create_tearoff_host" swapped="no"/>
                 <signal name="maybe-close-window" handler="maybe_close_window" swapped="yes"/>
                 <signal name="notify::status" handler="status_changed" swapped="yes" />
-              </object>
-            </child>
-            <child>
-              <object class="GtkRevealer" id="exit_info">
-                <property name="reveal_child">False</property>
-                <property name="child">
-                  <object class="GtkBox">
-                    <property name="can_focus">False</property>
-                    <property name="valign">end</property>
-                    <child>
-                      <object class="GtkLabel" id="exit_message">
-                        <property name="halign">start</property>
-                        <property name="hexpand">True</property>
-                      </object>
-                    </child>
-                    <style>
-                      <class name="exit-info"/>
-                    </style>
-                  </object>
-                </property>
+                <signal name="notify::ringing" handler="ringing_changed" swapped="yes" />
               </object>
             </child>
           </object>
         </property>
       </object>
     </property>
+    <child>
+      <object class="AdwBreakpoint">
+        <condition>max-width: 400px</condition>
+        <setter object="tab_button" property="visible">True</setter>
+        <setter object="new_tab_button" property="visible">False</setter>
+        <setter object="tab_bar" property="visible">False</setter>
+        <signal name="apply" handler="breakpoint_applied" swapped="yes"/>
+        <signal name="unapply" handler="breakpoint_unapplied" swapped="yes"/>
+      </object>
+    </child>
     <style>
       <class name="terminal-window"/>
     </style>

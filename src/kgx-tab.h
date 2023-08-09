@@ -1,6 +1,6 @@
 /* kgx-tab.h
  *
- * Copyright 2019-2020 Zander Brown
+ * Copyright 2019-2023 Zander Brown
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include <gtk/gtk.h>
+#include <adwaita.h>
 
 #include "kgx-terminal.h"
 #include "kgx-process.h"
@@ -45,28 +45,13 @@ typedef enum /*< flags,prefix=KGX >*/ {
 } KgxStatus;
 
 
-/**
- * KgxZoom:
- * @KGX_ZOOM_IN: Make text bigger
- * @KGX_ZOOM_OUT: Shrink text
- *
- * Indicates the zoom direction the zoom action was triggered for
- *
- * See #KgxPage::zoom, #KgxPages::zoom
- */
-typedef enum /*< enum,prefix=KGX >*/ {
-  KGX_ZOOM_IN = 0,  /*< nick=in >*/
-  KGX_ZOOM_OUT = 1, /*< nick=out >*/
-} KgxZoom;
-
-
 #ifndef __GTK_DOC_IGNORE__
 typedef struct _KgxPages KgxPages;
 #endif
 
 #define KGX_TYPE_TAB kgx_tab_get_type ()
 
-G_DECLARE_DERIVABLE_TYPE (KgxTab, kgx_tab, KGX, TAB, GtkBox)
+G_DECLARE_DERIVABLE_TYPE (KgxTab, kgx_tab, KGX, TAB, AdwBin)
 
 
 /**
@@ -76,12 +61,9 @@ G_DECLARE_DERIVABLE_TYPE (KgxTab, kgx_tab, KGX, TAB, GtkBox)
  *
  * Stability: Private
  */
-struct _KgxTabClass
-{
-  /*< private >*/
-  GtkBoxClass parent;
+struct _KgxTabClass {
+  AdwBinClass parent;
 
-  /*< public >*/
   void (*start)        (KgxTab               *tab,
                         GAsyncReadyCallback   callback,
                         gpointer              callback_data);
@@ -93,6 +75,7 @@ struct _KgxTabClass
                         GtkMessageType        type,
                         const char           *message,
                         gboolean              success);
+  void (*bell)         (KgxTab               *self);
 };
 
 
@@ -107,6 +90,7 @@ void        kgx_tab_died             (KgxTab               *self,
                                       GtkMessageType        type,
                                       const char           *message,
                                       gboolean              success);
+void        kgx_tab_bell              (KgxTab               *self);
 KgxPages   *kgx_tab_get_pages        (KgxTab               *self);
 void        kgx_tab_push_child       (KgxTab               *self,
                                       KgxProcess           *process);
@@ -114,7 +98,7 @@ void        kgx_tab_pop_child        (KgxTab               *self,
                                       KgxProcess           *process);
 gboolean    kgx_tab_is_active        (KgxTab               *self);
 GPtrArray  *kgx_tab_get_children     (KgxTab               *self);
-void        kgx_tab_accept_drop      (KgxTab               *self,
+void        kgx_tab_extra_drop       (KgxTab               *self,
                                       const GValue         *value);
 void        kgx_tab_set_initial_title (KgxTab              *self,
                                        const char          *title,

@@ -1,6 +1,6 @@
-/* kgx-util.h
+/* kgx-font-picker.h
  *
- * Copyright 2022 Zander Brown
+ * Copyright 2023 Zander Brown
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,13 +18,13 @@
 
 #pragma once
 
-#include <glib.h>
-#include <gio/gio.h>
+#include <adwaita.h>
 
 G_BEGIN_DECLS
 
-void       kgx_util_transform_uris_to_quoted_fuse_paths (GStrv       uris);
-char      *kgx_util_concat_uris                         (GStrv       uris,
-                                                         gsize      *length);
+#define KGX_TYPE_FONT_PICKER (kgx_font_picker_get_type ())
+
+G_DECLARE_FINAL_TYPE (KgxFontPicker, kgx_font_picker, KGX, FONT_PICKER, AdwWindow)
+
 
 G_END_DECLS

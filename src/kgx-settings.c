@@ -1,6 +1,6 @@
 /* kgx-settings.c
  *
- * Copyright 2022 Zander Brown
+ * Copyright 2022-2023 Zander Brown
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,20 +14,6 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
-
-/**
- * SECTION:kgx-proxy-info
- * @short_description: An object with proxy details
- * @title: KgxProxyInfo
- *
- * #KgxProxyInfo maps org.gnome.system.proxy to environmental variables
- * when launching new sessions
- *
- * Note that whilst changes to system settings are tracked, they _cannot_ be
- * applied existing terminals
- *
- * Only manual proxies are supported
  */
 
 #include "kgx-config.h"
@@ -54,15 +40,23 @@
 #define RESTORE_SIZE_KEY "restore-window-size"
 #define LAST_SIZE_KEY "last-window-size"
 
+#define AUDIBLE_BELL "audible-bell"
+
+#define CUSTOM_FONT "custom-font"
+
 struct _KgxSettings {
-  GObject      parent_instance;
+  GObject               parent_instance;
 
-  KgxTheme     theme;
-  double       scale;
-  int64_t      scrollback_lines;
+  KgxTheme              theme;
+  double                scale;
+  int64_t               scrollback_lines;
+  gboolean              audible_bell;
+  gboolean              visual_bell;
+  gboolean              use_system_font;
+  PangoFontDescription *custom_font;
 
-  GSettings   *settings;
-  GSettings   *desktop_interface;
+  GSettings            *settings;
+  GSettings            *desktop_interface;
 };
 
 
@@ -77,6 +71,10 @@ enum {
   PROP_SCALE_CAN_INCREASE,
   PROP_SCALE_CAN_DECREASE,
   PROP_SCROLLBACK_LINES,
+  PROP_AUDIBLE_BELL,
+  PROP_VISUAL_BELL,
+  PROP_USE_SYSTEM_FONT,
+  PROP_CUSTOM_FONT,
   LAST_PROP
 };
 
@@ -130,6 +128,18 @@ kgx_settings_set_property (GObject      *object,
     case PROP_SCROLLBACK_LINES:
       kgx_settings_set_scrollback (self, g_value_get_int64 (value));
       break;
+    case PROP_AUDIBLE_BELL:
+      kgx_settings_set_audible_bell (self, g_value_get_boolean (value));
+      break;
+    case PROP_VISUAL_BELL:
+      kgx_settings_set_visual_bell (self, g_value_get_boolean (value));
+      break;
+    case PROP_USE_SYSTEM_FONT:
+      kgx_settings_set_use_system_font (self, g_value_get_boolean (value));
+      break;
+    case PROP_CUSTOM_FONT:
+      kgx_settings_set_custom_font (self, g_value_get_boxed (value));
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -164,6 +174,18 @@ kgx_settings_get_property (GObject    *object,
     case PROP_SCROLLBACK_LINES:
       g_value_set_int64 (value, self->scrollback_lines);
       break;
+    case PROP_AUDIBLE_BELL:
+      g_value_set_boolean (value, self->audible_bell);
+      break;
+    case PROP_VISUAL_BELL:
+      g_value_set_boolean (value, kgx_settings_get_visual_bell (self));
+      break;
+    case PROP_USE_SYSTEM_FONT:
+      g_value_set_boolean (value, self->use_system_font);
+      break;
+    case PROP_CUSTOM_FONT:
+      g_value_set_boxed (value, self->custom_font);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -190,17 +212,17 @@ kgx_settings_class_init (KgxSettingsClass *klass)
    * Bound to ‘theme’ GSetting so changes persist
    */
   pspecs[PROP_THEME] =
-    g_param_spec_enum ("theme", "Theme", "Terminal theme",
+    g_param_spec_enum ("theme", NULL, NULL,
                        KGX_TYPE_THEME, KGX_THEME_NIGHT,
                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   pspecs[PROP_FONT] =
-    g_param_spec_boxed ("font", "Font", "Monospace font",
-                         PANGO_TYPE_FONT_DESCRIPTION,
-                         G_PARAM_READABLE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
+    g_param_spec_boxed ("font", NULL, NULL,
+                        PANGO_TYPE_FONT_DESCRIPTION,
+                        G_PARAM_READABLE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
 
   pspecs[PROP_FONT_SCALE] =
-    g_param_spec_double ("font-scale", "Font scale", "Font scaling",
+    g_param_spec_double ("font-scale", NULL, NULL,
                          KGX_FONT_SCALE_MIN,
                          KGX_FONT_SCALE_MAX,
                          KGX_FONT_SCALE_DEFAULT,
@@ -224,8 +246,28 @@ kgx_settings_class_init (KgxSettingsClass *klass)
    * Bound to ‘scrollback-lines’ GSetting so changes persist
    */
   pspecs[PROP_SCROLLBACK_LINES] =
-    g_param_spec_int64 ("scrollback-lines", "Scrollback Lines", "Size of the scrollback",
+    g_param_spec_int64 ("scrollback-lines", NULL, NULL,
                         G_MININT64, G_MAXINT64, 512,
+                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
+
+  pspecs[PROP_AUDIBLE_BELL] =
+    g_param_spec_boolean ("audible-bell", NULL, NULL,
+                          TRUE,
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
+
+  pspecs[PROP_VISUAL_BELL] =
+    g_param_spec_boolean ("visual-bell", NULL, NULL,
+                          TRUE,
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
+
+  pspecs[PROP_USE_SYSTEM_FONT] =
+    g_param_spec_boolean ("use-system-font", NULL, NULL,
+                          FALSE,
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
+
+  pspecs[PROP_CUSTOM_FONT] =
+    g_param_spec_boxed ("custom-font", NULL, NULL,
+                        PANGO_TYPE_FONT_DESCRIPTION,
                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
 
   g_object_class_install_properties (object_class, LAST_PROP, pspecs);
@@ -233,11 +275,13 @@ kgx_settings_class_init (KgxSettingsClass *klass)
 
 
 static void
-font_changed (GSettings    *settings,
-              const char   *key,
-              KgxSettings  *self)
+system_font_changed (GSettings    *settings,
+                     const char   *key,
+                     KgxSettings  *self)
 {
-  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_FONT]);
+  if (self->use_system_font) {
+    g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_FONT]);
+  }
 }
 
 
@@ -249,6 +293,49 @@ restore_window_size_changed (GSettings   *settings,
   if (!g_settings_get_boolean (self->settings, RESTORE_SIZE_KEY)) {
     g_settings_set (self->settings, LAST_SIZE_KEY, "(ii)", -1, -1);
   }
+}
+
+
+static gboolean
+decode_font (GValue   *value,
+             GVariant *variant,
+             gpointer  data)
+{
+  const char *font_desc = g_variant_get_string (variant, NULL);
+  g_autoptr (PangoFontDescription) font = NULL;
+
+  if (!font_desc || g_strcmp0 (font_desc, "") == 0) {
+    g_value_set_boxed (value, NULL);
+
+    return TRUE;
+  }
+
+  font = pango_font_description_from_string (font_desc);
+
+  if ((pango_font_description_get_set_fields (font) & (PANGO_FONT_MASK_FAMILY | PANGO_FONT_MASK_SIZE)) == 0) {
+    g_value_set_boxed (value, NULL);
+
+    g_warning ("settings: ignoring ‘%s’ as lacking family and/or size", font_desc);
+
+    return TRUE;
+  }
+
+  g_value_set_boxed (value, font);
+
+  return TRUE;
+}
+
+
+static GVariant *
+encode_font (const GValue       *value,
+             const GVariantType *variant_ty,
+             gpointer            data)
+{
+  PangoFontDescription *font;
+
+  font = g_value_get_boxed (value);
+
+  return g_variant_new_take_string (pango_font_description_to_string (font));
 }
 
 
@@ -265,6 +352,21 @@ kgx_settings_init (KgxSettings *self)
   g_settings_bind (self->settings, "scrollback-lines",
                    self, "scrollback-lines",
                    G_SETTINGS_BIND_DEFAULT);
+  g_settings_bind (self->settings, "audible-bell",
+                   self, "audible-bell",
+                   G_SETTINGS_BIND_DEFAULT);
+  g_settings_bind (self->settings, "visual-bell",
+                   self, "visual-bell",
+                   G_SETTINGS_BIND_DEFAULT);
+  g_settings_bind (self->settings, "use-system-font",
+                   self, "use-system-font",
+                   G_SETTINGS_BIND_DEFAULT);
+  g_settings_bind_with_mapping (self->settings, "custom-font",
+                                self, "custom-font",
+                                G_SETTINGS_BIND_DEFAULT,
+                                decode_font,
+                                encode_font,
+                                NULL, NULL);
 
   g_signal_connect (self->settings,
                     "changed::restore-window-size",
@@ -274,7 +376,7 @@ kgx_settings_init (KgxSettings *self)
   self->desktop_interface = g_settings_new (DESKTOP_INTERFACE_SETTINGS_SCHEMA);
   g_signal_connect (self->desktop_interface,
                     "changed::" MONOSPACE_FONT_KEY_NAME,
-                    G_CALLBACK (font_changed),
+                    G_CALLBACK (system_font_changed),
                     self);
 }
 
@@ -283,17 +385,22 @@ kgx_settings_init (KgxSettings *self)
  * kgx_settings_get_font:
  * @self: the #KgxSettings
  *
- * Creates a #PangoFontDescription for the system monospace font.
+ * Creates a #PangoFontDescription for the system monospace font when
+ * #KgxSettings:use-system-font or the user defined font specified by
+ * #KgxSettings:custom-font
  *
  * Returns: (transfer full): a new #PangoFontDescription
  */
 PangoFontDescription *
 kgx_settings_get_font (KgxSettings *self)
 {
-  /* Adapted from gnome-terminal */
   g_autofree char *font = NULL;
 
   g_return_val_if_fail (KGX_IS_SETTINGS (self), NULL);
+
+  if (!self->use_system_font && self->custom_font) {
+    return pango_font_description_copy (self->custom_font);
+  }
 
   font = g_settings_get_string (self->desktop_interface,
                                 MONOSPACE_FONT_KEY_NAME);
@@ -330,6 +437,7 @@ kgx_settings_reset_scale (KgxSettings *self)
 
 
 /**
+ * kgx_settings_get_shell:
  * Return: (transfer full):
  */
 GStrv
@@ -392,6 +500,15 @@ kgx_settings_set_scrollback (KgxSettings *self,
 }
 
 
+gboolean
+kgx_settings_get_restore_size (KgxSettings *self)
+{
+  g_return_val_if_fail (KGX_IS_SETTINGS (self), FALSE);
+
+  return g_settings_get_boolean (self->settings, RESTORE_SIZE_KEY);
+}
+
+
 void
 kgx_settings_get_size (KgxSettings *self,
                        int         *width,
@@ -421,7 +538,114 @@ kgx_settings_set_custom_size (KgxSettings *self,
     return;
   }
 
-  g_debug ("Store window size: %i×%i", width, height);
+  g_debug ("settings: store size (%i×%i)", width, height);
 
   g_settings_set (self->settings, LAST_SIZE_KEY, "(ii)", width, height);
+}
+
+
+gboolean
+kgx_settings_get_audible_bell (KgxSettings *self)
+{
+  g_return_val_if_fail (KGX_IS_SETTINGS (self), FALSE);
+
+  return self->audible_bell;
+}
+
+
+void
+kgx_settings_set_audible_bell (KgxSettings *self,
+                               gboolean     audible_bell)
+{
+  g_return_if_fail (KGX_IS_SETTINGS (self));
+
+  if (self->audible_bell == audible_bell)
+    return;
+
+  self->audible_bell = audible_bell;
+
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_AUDIBLE_BELL]);
+}
+
+
+gboolean
+kgx_settings_get_visual_bell (KgxSettings *self)
+{
+  g_return_val_if_fail (KGX_IS_SETTINGS (self), FALSE);
+
+  return self->visual_bell;
+}
+
+
+void
+kgx_settings_set_visual_bell (KgxSettings *self,
+                              gboolean     visual_bell)
+{
+  g_return_if_fail (KGX_IS_SETTINGS (self));
+
+  if (self->visual_bell == visual_bell)
+    return;
+
+  self->visual_bell = visual_bell;
+
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_VISUAL_BELL]);
+}
+
+
+gboolean
+kgx_settings_get_use_system_font (KgxSettings *self)
+{
+  g_return_val_if_fail (KGX_IS_SETTINGS (self), FALSE);
+
+  return self->use_system_font;
+}
+
+
+void
+kgx_settings_set_use_system_font (KgxSettings *self,
+                                  gboolean     use_system_font)
+{
+  g_return_if_fail (KGX_IS_SETTINGS (self));
+
+  if (self->use_system_font == use_system_font)
+    return;
+
+  self->use_system_font = use_system_font;
+
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_USE_SYSTEM_FONT]);
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_FONT]);
+}
+
+
+/**
+ * kgx_settings_get_custom_font:
+ *
+ * Return: (transfer full):
+ */
+PangoFontDescription *
+kgx_settings_get_custom_font (KgxSettings *self)
+{
+  g_return_val_if_fail (KGX_IS_SETTINGS (self), NULL);
+
+  return pango_font_description_copy (self->custom_font);
+}
+
+
+void
+kgx_settings_set_custom_font (KgxSettings          *self,
+                              PangoFontDescription *custom_font)
+{
+  g_return_if_fail (KGX_IS_SETTINGS (self));
+
+  if (self->custom_font == custom_font ||
+      (self->custom_font && custom_font &&
+       pango_font_description_equal (self->custom_font, custom_font))) {
+    return;
+  }
+
+  g_clear_pointer (&self->custom_font, pango_font_description_free);
+  self->custom_font = pango_font_description_copy (custom_font);
+
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_CUSTOM_FONT]);
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_FONT]);
 }

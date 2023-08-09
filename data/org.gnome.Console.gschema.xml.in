@@ -15,6 +15,12 @@
       <range min="0.5" max="4.0"/>
       <default>1.0</default>
     </key>
+    <key name="custom-font" type="s">
+      <default>""</default>
+    </key>
+    <key name="use-system-font" type="b">
+      <default>true</default>
+    </key>
     <key name="shell" type="as">
       <default>[]</default>
     </key>
@@ -25,6 +31,12 @@
       <default>(-1, -1)</default>
     </key>
     <key name="restore-window-size" type="b">
+      <default>true</default>
+    </key>
+    <key name="audible-bell" type="b">
+      <default>true</default>
+    </key>
+    <key name="visual-bell" type="b">
       <default>true</default>
     </key>
   </schema>
