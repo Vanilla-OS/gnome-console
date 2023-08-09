@@ -1,6 +1,6 @@
 /* kgx-tab.c
  *
- * Copyright 2019-2020 Zander Brown
+ * Copyright 2019-2023 Zander Brown
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,12 +16,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/**
- * SECTION:kgx-page
- * @title: KgxTab
- * @short_description: Base for things in a #KgxPages
- */
-
 #include "kgx-config.h"
 
 #include <glib/gi18n.h>
@@ -32,8 +26,8 @@
 #include "kgx-pages.h"
 #include "kgx-terminal.h"
 #include "kgx-settings.h"
-#include "kgx-util.h"
 #include "kgx-application.h"
+#include "kgx-drop-target.h"
 #include "kgx-marshals.h"
 
 
@@ -54,17 +48,24 @@ struct _KgxTabPrivate {
   gboolean              needs_attention;
   gboolean              search_mode_enabled;
 
+  gboolean              ringing;
+  guint                 ringing_timeout;
+
+  gboolean              dropping;
+
   KgxTerminal          *terminal;
   GSignalGroup         *terminal_signals;
   GBindingGroup        *terminal_binds;
+
+  KgxDropTarget        *drop_target;
 
   GtkWidget            *stack;
   GtkWidget            *spinner_revealer;
   GtkWidget            *content;
   guint                 spinner_timeout;
 
-  GtkWidget            *revealer;
-  GtkWidget            *label;
+  GtkWidget            *exit_revealer;
+  GtkWidget            *exit_message;
   GtkWidget            *search_entry;
   GtkWidget            *search_bar;
   char                 *last_search;
@@ -80,11 +81,12 @@ struct _KgxTabPrivate {
 
 static void kgx_tab_buildable_iface_init (GtkBuildableIface *iface);
 
-G_DEFINE_ABSTRACT_TYPE_WITH_CODE (KgxTab, kgx_tab, GTK_TYPE_BOX,
+G_DEFINE_ABSTRACT_TYPE_WITH_CODE (KgxTab, kgx_tab, ADW_TYPE_BIN,
                                   G_ADD_PRIVATE (KgxTab)
                                   G_IMPLEMENT_INTERFACE (GTK_TYPE_BUILDABLE,
                                                          kgx_tab_buildable_iface_init))
 
+static GtkBuildableIface *parent_buildable_iface;
 
 enum {
   PROP_0,
@@ -99,6 +101,8 @@ enum {
   PROP_CLOSE_ON_QUIT,
   PROP_NEEDS_ATTENTION,
   PROP_SEARCH_MODE_ENABLED,
+  PROP_RINGING,
+  PROP_DROPPING,
   LAST_PROP
 };
 static GParamSpec *pspecs[LAST_PROP] = { NULL, };
@@ -108,6 +112,7 @@ enum {
   SIZE_CHANGED,
   ZOOM,
   DIED,
+  BELL,
   N_SIGNALS
 };
 static guint signals[N_SIGNALS];
@@ -134,6 +139,8 @@ kgx_tab_dispose (GObject *object)
   g_clear_pointer (&priv->title, g_free);
   g_clear_pointer (&priv->tooltip, g_free);
   g_clear_object (&priv->path);
+
+  g_clear_handle_id (&priv->ringing_timeout, g_source_remove);
 
   g_clear_pointer (&priv->root, g_hash_table_unref);
   g_clear_pointer (&priv->remote, g_hash_table_unref);
@@ -205,8 +212,7 @@ search_changed (GtkSearchBar *bar,
   narrowing_down = search && priv->last_search &&
                    g_strrstr (priv->last_search, search);
 
-  g_clear_pointer (&priv->last_search, g_free);
-  priv->last_search = g_strdup (search);
+  g_set_str (&priv->last_search, search);
 
   if (!narrowing_down)
     vte_terminal_search_find_previous (VTE_TERMINAL (priv->terminal));
@@ -340,6 +346,12 @@ kgx_tab_get_property (GObject    *object,
     case PROP_SEARCH_MODE_ENABLED:
       g_value_set_boolean (value, priv->search_mode_enabled);
       break;
+    case PROP_RINGING:
+      g_value_set_boolean (value, priv->ringing);
+      break;
+    case PROP_DROPPING:
+      g_value_set_boolean (value, priv->dropping);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -363,7 +375,7 @@ kgx_tab_set_is_active (KgxTab   *self,
 
   priv->is_active = active;
 
-  if (!active && priv->notification_id) {
+  if (active && priv->notification_id) {
     g_application_withdraw_notification (G_APPLICATION (priv->application),
                                           priv->notification_id);
     g_clear_pointer (&priv->notification_id, g_free);
@@ -423,6 +435,9 @@ kgx_tab_set_property (GObject      *object,
     case PROP_SEARCH_MODE_ENABLED:
       priv->search_mode_enabled = g_value_get_boolean (value);
       break;
+    case PROP_DROPPING:
+      priv->dropping = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -430,14 +445,16 @@ kgx_tab_set_property (GObject      *object,
 }
 
 
-static gboolean
-drop (GtkDropTarget *target,
-      const GValue  *value,
+static void
+drop (KgxDropTarget *target,
+      const char    *text,
       KgxTab        *self)
 {
-  kgx_tab_accept_drop (self, value);
+  KgxTabPrivate *priv = kgx_tab_get_instance_private (self);
 
-  return TRUE;
+  if (priv->terminal) {
+    kgx_terminal_accept_paste (KGX_TERMINAL (priv->terminal), text);
+  }
 }
 
 
@@ -488,15 +505,54 @@ kgx_tab_real_died (KgxTab         *self,
 
   priv = kgx_tab_get_instance_private (self);
 
-  gtk_label_set_markup (GTK_LABEL (priv->label), message);
+  gtk_label_set_markup (GTK_LABEL (priv->exit_message), message);
 
   if (type == GTK_MESSAGE_ERROR) {
-    gtk_widget_add_css_class (priv->revealer, "error");
+    gtk_widget_add_css_class (priv->exit_revealer, "error");
   } else {
-    gtk_widget_remove_css_class (priv->revealer, "error");
+    gtk_widget_remove_css_class (priv->exit_revealer, "error");
   }
 
-  gtk_revealer_set_reveal_child (GTK_REVEALER (priv->revealer), TRUE);
+  gtk_revealer_set_reveal_child (GTK_REVEALER (priv->exit_revealer), TRUE);
+}
+
+
+static void
+clear_ringing (gpointer data)
+{
+  KgxTab *self = data;
+  KgxTabPrivate *priv;
+
+  g_return_if_fail (KGX_IS_TAB (self));
+
+  priv = kgx_tab_get_instance_private (self);
+
+  priv->ringing_timeout = 0;
+
+  priv->ringing = FALSE;
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_RINGING]);
+}
+
+
+static void
+kgx_tab_real_bell (KgxTab *self)
+{
+  KgxTabPrivate *priv;
+
+  g_return_if_fail (KGX_IS_TAB (self));
+
+  priv = kgx_tab_get_instance_private (self);
+
+  if (!kgx_settings_get_visual_bell (priv->settings)) {
+    return;
+  }
+
+  priv->ringing = TRUE;
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_RINGING]);
+
+  g_clear_handle_id (&priv->ringing_timeout, g_source_remove);
+  priv->ringing_timeout = g_timeout_add_once (800, clear_ringing, self);
+  g_source_set_name_by_id (priv->ringing_timeout, "[kgx] tab ringing");
 }
 
 
@@ -516,6 +572,7 @@ kgx_tab_class_init (KgxTabClass *klass)
   tab_class->start = kgx_tab_real_start;
   tab_class->start_finish = kgx_tab_real_start_finish;
   tab_class->died = kgx_tab_real_died;
+  tab_class->bell = kgx_tab_real_bell;
 
   /**
    * KgxTab:application:
@@ -525,9 +582,9 @@ kgx_tab_class_init (KgxTabClass *klass)
    * Stability: Private
    */
   pspecs[PROP_APPLICATION] =
-    g_param_spec_object ("application", "Application", "The application",
+    g_param_spec_object ("application", NULL, NULL,
                          KGX_TYPE_APPLICATION,
-                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY);
+                         G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
 
   pspecs[PROP_SETTINGS] =
     g_param_spec_object ("settings", NULL, NULL,
@@ -547,9 +604,9 @@ kgx_tab_class_init (KgxTabClass *klass)
    * Stability: Private
    */
   pspecs[PROP_TAB_TITLE] =
-    g_param_spec_string ("tab-title", "Page Title", "Title for this tab",
+    g_param_spec_string ("tab-title", NULL, NULL,
                          NULL,
-                         G_PARAM_READWRITE);
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   /**
    * KgxTab:tab-path:
@@ -559,26 +616,20 @@ kgx_tab_class_init (KgxTabClass *klass)
    * Stability: Private
    */
   pspecs[PROP_TAB_PATH] =
-    g_param_spec_object ("tab-path", "Page Path", "Current path",
+    g_param_spec_object ("tab-path", NULL, NULL,
                          G_TYPE_FILE,
-                         G_PARAM_READWRITE);
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  /**
-   * KgxTab:tab-status:
-   *
-   * Stability: Private
-   */
   pspecs[PROP_TAB_STATUS] =
-    g_param_spec_flags ("tab-status", "Page Status", "Session status",
+    g_param_spec_flags ("tab-status", NULL, NULL,
                         KGX_TYPE_STATUS,
                         KGX_NONE,
-                        G_PARAM_READWRITE);
+                        G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
 
   pspecs[PROP_TAB_TOOLTIP] =
-    g_param_spec_string ("tab-tooltip", "Tab Tooltip",
-                         "Extra information to show in the tooltip",
+    g_param_spec_string ("tab-tooltip", NULL, NULL,
                          NULL,
-                         G_PARAM_READWRITE);
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   /**
    * KgxTab:is-active:
@@ -588,27 +639,34 @@ kgx_tab_class_init (KgxTabClass *klass)
    * Stability: Private
    */
   pspecs[PROP_IS_ACTIVE] =
-    g_param_spec_boolean ("is-active", "Is Active", "Current tab",
+    g_param_spec_boolean ("is-active", NULL, NULL,
                           FALSE,
-                          G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY);
+                          G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
 
   pspecs[PROP_CLOSE_ON_QUIT] =
-    g_param_spec_boolean ("close-on-quit", "Close on quit",
-                          "Should the tab close when dead",
+    g_param_spec_boolean ("close-on-quit", NULL, NULL,
                           FALSE,
-                          G_PARAM_READWRITE);
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   pspecs[PROP_NEEDS_ATTENTION] =
-    g_param_spec_boolean ("needs-attention", "Needs attention",
-                          "Whether the tab needs attention",
+    g_param_spec_boolean ("needs-attention", NULL, NULL,
                           FALSE,
-                          G_PARAM_READWRITE);
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   pspecs[PROP_SEARCH_MODE_ENABLED] =
-    g_param_spec_boolean ("search-mode-enabled", "Search mode enabled",
-                          "Whether the search mode is enabled for active page",
+    g_param_spec_boolean ("search-mode-enabled", NULL, NULL,
                           FALSE,
-                          G_PARAM_READWRITE);
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  pspecs[PROP_RINGING] =
+    g_param_spec_boolean ("ringing", NULL, NULL,
+                          FALSE,
+                          G_PARAM_READABLE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+
+  pspecs[PROP_DROPPING] =
+    g_param_spec_boolean ("dropping", NULL, NULL,
+                          FALSE,
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, LAST_PROP, pspecs);
 
@@ -621,6 +679,9 @@ kgx_tab_class_init (KgxTabClass *klass)
                                         2,
                                         G_TYPE_UINT,
                                         G_TYPE_UINT);
+  g_signal_set_va_marshaller (signals[SIZE_CHANGED],
+                              G_TYPE_FROM_CLASS (klass),
+                              kgx_marshals_VOID__UINT_UINTv);
 
   signals[ZOOM] = g_signal_new ("zoom",
                                 G_TYPE_FROM_CLASS (klass),
@@ -630,6 +691,9 @@ kgx_tab_class_init (KgxTabClass *klass)
                                 G_TYPE_NONE,
                                 1,
                                 KGX_TYPE_ZOOM);
+  g_signal_set_va_marshaller (signals[ZOOM],
+                              G_TYPE_FROM_CLASS (klass),
+                              kgx_marshals_VOID__ENUMv);
 
   signals[DIED] = g_signal_new ("died",
                                 G_TYPE_FROM_CLASS (klass),
@@ -642,18 +706,34 @@ kgx_tab_class_init (KgxTabClass *klass)
                                 GTK_TYPE_MESSAGE_TYPE,
                                 G_TYPE_STRING,
                                 G_TYPE_BOOLEAN);
+  g_signal_set_va_marshaller (signals[DIED],
+                              G_TYPE_FROM_CLASS (klass),
+                              kgx_marshals_VOID__ENUM_STRING_BOOLEANv);
+
+  signals[BELL] = g_signal_new ("bell",
+                                G_TYPE_FROM_CLASS (klass),
+                                G_SIGNAL_RUN_LAST,
+                                G_STRUCT_OFFSET (KgxTabClass, bell),
+                                NULL, NULL,
+                                kgx_marshals_VOID__VOID,
+                                G_TYPE_NONE,
+                                0);
+  g_signal_set_va_marshaller (signals[BELL],
+                              G_TYPE_FROM_CLASS (klass),
+                              kgx_marshals_VOID__VOIDv);
 
   gtk_widget_class_set_template_from_resource (widget_class,
                                                KGX_APPLICATION_PATH "kgx-tab.ui");
 
   gtk_widget_class_bind_template_child_private (widget_class, KgxTab, stack);
   gtk_widget_class_bind_template_child_private (widget_class, KgxTab, spinner_revealer);
-  gtk_widget_class_bind_template_child_private (widget_class, KgxTab, revealer);
-  gtk_widget_class_bind_template_child_private (widget_class, KgxTab, label);
+  gtk_widget_class_bind_template_child_private (widget_class, KgxTab, exit_revealer);
+  gtk_widget_class_bind_template_child_private (widget_class, KgxTab, exit_message);
   gtk_widget_class_bind_template_child_private (widget_class, KgxTab, search_entry);
   gtk_widget_class_bind_template_child_private (widget_class, KgxTab, search_bar);
   gtk_widget_class_bind_template_child_private (widget_class, KgxTab, terminal_signals);
   gtk_widget_class_bind_template_child_private (widget_class, KgxTab, terminal_binds);
+  gtk_widget_class_bind_template_child_private (widget_class, KgxTab, drop_target);
 
   gtk_widget_class_bind_template_callback (widget_class, search_enabled);
   gtk_widget_class_bind_template_callback (widget_class, search_changed);
@@ -661,6 +741,9 @@ kgx_tab_class_init (KgxTabClass *klass)
   gtk_widget_class_bind_template_callback (widget_class, search_prev);
   gtk_widget_class_bind_template_callback (widget_class, spinner_mapped);
   gtk_widget_class_bind_template_callback (widget_class, spinner_unmapped);
+  gtk_widget_class_bind_template_callback (widget_class, drop);
+
+  gtk_widget_class_set_css_name (widget_class, "kgx-tab");
 }
 
 
@@ -682,7 +765,9 @@ kgx_tab_add_child (GtkBuildable *buildable,
     g_set_weak_pointer (&priv->content, GTK_WIDGET (child));
     gtk_stack_add_named (GTK_STACK (priv->stack), GTK_WIDGET (child), "content");
   } else if (GTK_IS_WIDGET (child)) {
-    gtk_box_append (GTK_BOX (self), GTK_WIDGET (child));
+    adw_bin_set_child (ADW_BIN (self), GTK_WIDGET (child));
+  } else {
+    parent_buildable_iface->add_child (buildable, builder, child, type);
   }
 }
 
@@ -690,6 +775,8 @@ kgx_tab_add_child (GtkBuildable *buildable,
 static void
 kgx_tab_buildable_iface_init (GtkBuildableIface *iface)
 {
+  parent_buildable_iface = g_type_interface_peek_parent (iface);
+
   iface->add_child = kgx_tab_add_child;
 }
 
@@ -705,18 +792,19 @@ size_changed (KgxTerminal *term,
 
 
 static void
-font_increase (KgxTerminal *term,
-               KgxTab      *self)
+zoom (KgxTerminal *term,
+      KgxZoom      zoom,
+      KgxTab      *self)
 {
-  g_signal_emit (self, signals[ZOOM], 0, KGX_ZOOM_IN);
+  g_signal_emit (self, signals[ZOOM], 0, zoom);
 }
 
 
 static void
-font_decrease (KgxTerminal *term,
-               KgxTab      *self)
+bell (KgxTerminal *term,
+      KgxTab      *self)
 {
-  g_signal_emit (self, signals[ZOOM], 0, KGX_ZOOM_OUT);
+  kgx_tab_bell (self);
 }
 
 
@@ -725,7 +813,6 @@ kgx_tab_init (KgxTab *self)
 {
   static guint last_id = 0;
   KgxTabPrivate *priv = kgx_tab_get_instance_private (self);
-  GtkDropTarget *target;
 
   last_id++;
 
@@ -744,10 +831,10 @@ kgx_tab_init (KgxTab *self)
                           "size-changed", G_CALLBACK (size_changed),
                           self),
   g_signal_group_connect (priv->terminal_signals,
-                          "increase-font-size", G_CALLBACK (font_increase),
+                          "zoom", G_CALLBACK (zoom),
                           self),
   g_signal_group_connect (priv->terminal_signals,
-                          "decrease-font-size", G_CALLBACK (font_decrease),
+                          "bell", G_CALLBACK (bell),
                           self),
 
   g_binding_group_bind (priv->terminal_binds, "window-title",
@@ -760,9 +847,7 @@ kgx_tab_init (KgxTab *self)
   gtk_search_bar_connect_entry (GTK_SEARCH_BAR (priv->search_bar),
                                 GTK_EDITABLE (priv->search_entry));
 
-  target = gtk_drop_target_new (G_TYPE_STRING, GDK_ACTION_COPY);
-  g_signal_connect (target, "drop", G_CALLBACK (drop), self);
-  gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (target));
+  kgx_drop_target_mount_on (priv->drop_target, GTK_WIDGET (self));
 }
 
 
@@ -818,6 +903,23 @@ kgx_tab_died (KgxTab         *self,
 }
 
 
+void
+kgx_tab_bell (KgxTab *self)
+{
+  KgxTabPrivate *priv;
+
+  g_return_if_fail (KGX_IS_TAB (self));
+
+  priv = kgx_tab_get_instance_private (self);
+
+  if (!priv->is_active && !priv->needs_attention) {
+    g_object_set (self, "needs-attention", TRUE, NULL);
+  }
+
+  g_signal_emit (self, signals[BELL], 0);
+}
+
+
 /**
  * kgx_tab_get_pages:
  * @self: the #KgxTab
@@ -865,14 +967,13 @@ static inline KgxStatus
 push_type (GHashTable      *table,
            GPid             pid,
            KgxProcess      *process,
-           GtkStyleContext *context,
            KgxStatus        status)
 {
   g_hash_table_insert (table,
                        GINT_TO_POINTER (pid),
                        process != NULL ? g_rc_box_acquire (process) : NULL);
 
-  g_debug ("Now %i %X", g_hash_table_size (table), status);
+  g_debug ("tab: Now %i %X", g_hash_table_size (table), status);
 
   return status;
 }
@@ -889,7 +990,6 @@ void
 kgx_tab_push_child (KgxTab     *self,
                     KgxProcess *process)
 {
-  GtkStyleContext *context;
   GPid pid = 0;
   GStrv argv;
   g_autofree char *program = NULL;
@@ -900,7 +1000,6 @@ kgx_tab_push_child (KgxTab     *self,
 
   priv = kgx_tab_get_instance_private (self);
 
-  context = gtk_widget_get_style_context (GTK_WIDGET (self));
   pid = kgx_process_get_pid (process);
   argv = kgx_process_get_argv (process);
 
@@ -909,26 +1008,28 @@ kgx_tab_push_child (KgxTab     *self,
   }
 
   if (G_UNLIKELY (g_strcmp0 (program, "ssh") == 0 ||
+                  g_strcmp0 (program, "telnet") == 0 ||
                   g_strcmp0 (program, "mosh-client") == 0 ||
                   g_strcmp0 (program, "mosh") == 0 ||
                   g_strcmp0 (program, "et") == 0)) {
-    new_status |= push_type (priv->remote, pid, NULL, context, KGX_REMOTE);
+    new_status |= push_type (priv->remote, pid, NULL, KGX_REMOTE);
   }
 
   if (G_UNLIKELY (g_strcmp0 (program, "waypipe") == 0)) {
     for (int i = 1; argv[i]; i++) {
-      if (G_UNLIKELY (g_strcmp0 (argv[i], "ssh") == 0)) {
-        new_status |= push_type (priv->remote, pid, NULL, context, KGX_REMOTE);
+      if (G_UNLIKELY (g_strcmp0 (argv[i], "ssh") == 0 ||
+                      g_strcmp0 (argv[i], "telnet") == 0)) {
+        new_status |= push_type (priv->remote, pid, NULL, KGX_REMOTE);
         break;
       }
     }
   }
 
   if (G_UNLIKELY (kgx_process_get_is_root (process))) {
-    new_status |= push_type (priv->root, pid, NULL, context, KGX_PRIVILEGED);
+    new_status |= push_type (priv->root, pid, NULL, KGX_PRIVILEGED);
   }
 
-  push_type (priv->children, pid, process, context, KGX_NONE);
+  push_type (priv->children, pid, process, KGX_NONE);
 
   set_status (self, new_status);
 }
@@ -937,7 +1038,6 @@ kgx_tab_push_child (KgxTab     *self,
 inline static KgxStatus
 pop_type (GHashTable      *table,
           GPid             pid,
-          GtkStyleContext *context,
           KgxStatus        status)
 {
   guint size = 0;
@@ -947,11 +1047,11 @@ pop_type (GHashTable      *table,
   size = g_hash_table_size (table);
 
   if (G_LIKELY (size <= 0)) {
-    g_debug ("No longer %X", status);
+    g_debug ("tab: No longer %X", status);
 
     return KGX_NONE;
   } else {
-    g_debug ("%i %X remaining", size, status);
+    g_debug ("tab: %i %X remaining", size, status);
 
     return status;
   }
@@ -969,7 +1069,6 @@ void
 kgx_tab_pop_child (KgxTab     *self,
                    KgxProcess *process)
 {
-  GtkStyleContext *context;
   GPid pid = 0;
   KgxStatus new_status = KGX_NONE;
   KgxTabPrivate *priv;
@@ -978,12 +1077,11 @@ kgx_tab_pop_child (KgxTab     *self,
 
   priv = kgx_tab_get_instance_private (self);
 
-  context = gtk_widget_get_style_context (GTK_WIDGET (self));
   pid = kgx_process_get_pid (process);
 
-  new_status |= pop_type (priv->remote, pid, context, KGX_REMOTE);
-  new_status |= pop_type (priv->root, pid, context, KGX_PRIVILEGED);
-  pop_type (priv->children, pid, context, KGX_NONE);
+  new_status |= pop_type (priv->remote, pid, KGX_REMOTE);
+  new_status |= pop_type (priv->root, pid, KGX_PRIVILEGED);
+  pop_type (priv->children, pid, KGX_NONE);
 
   set_status (self, new_status);
 
@@ -1057,26 +1155,16 @@ kgx_tab_get_children (KgxTab *self)
 
 
 void
-kgx_tab_accept_drop (KgxTab       *self,
-                     const GValue *value)
+kgx_tab_extra_drop (KgxTab       *self,
+                    const GValue *value)
 {
   KgxTabPrivate *priv;
-  g_autofree char *text = NULL;
-  g_auto (GStrv) uris = NULL;
 
   g_return_if_fail (KGX_IS_TAB (self));
 
   priv = kgx_tab_get_instance_private (self);
 
-  uris = g_strsplit (g_value_get_string (value), "\n", 0);
-
-  kgx_util_transform_uris_to_quoted_fuse_paths (uris);
-
-  text = kgx_util_concat_uris (uris, NULL);
-
-  if (priv->terminal) {
-    kgx_terminal_accept_paste (KGX_TERMINAL (priv->terminal), text);
-  }
+  kgx_drop_target_extra_drop (priv->drop_target, value);
 }
 
 

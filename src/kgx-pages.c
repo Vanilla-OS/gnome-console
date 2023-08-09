@@ -1,6 +1,6 @@
 /* kgx-pages.c
  *
- * Copyright 2019 Zander Brown
+ * Copyright 2019-2023 Zander Brown
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,14 +16,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/**
- * SECTION:kgx-pages
- * @title: KgxPages
- * @short_description: Container of #KgxTab s
- *
- * The container of open #KgxTab (uses #AdwTabView internally)
- */
-
 #include "kgx-config.h"
 
 #include <glib/gi18n.h>
@@ -35,6 +27,11 @@
 #include "kgx-marshals.h"
 
 
+/**
+ * KgxPages:
+ *
+ * The container of open #KgxTab (uses #AdwTabView internally)
+ */
 typedef struct _KgxPagesPrivate KgxPagesPrivate;
 struct _KgxPagesPrivate {
   KgxSettings          *settings;
@@ -46,8 +43,9 @@ struct _KgxPagesPrivate {
   gboolean              is_active;
   KgxStatus             page_status;
   gboolean              search_mode_enabled;
+  gboolean              ringing;
 
-  GtkWidget            *status;
+  GtkWidget            *status_message;
   GtkWidget            *status_revealer;
 
   int                   last_cols;
@@ -78,6 +76,7 @@ enum {
   PROP_IS_ACTIVE,
   PROP_STATUS,
   PROP_SEARCH_MODE_ENABLED,
+  PROP_RINGING,
   LAST_PROP
 };
 static GParamSpec *pspecs[LAST_PROP] = { NULL, };
@@ -149,6 +148,9 @@ kgx_pages_get_property (GObject    *object,
     case PROP_SEARCH_MODE_ENABLED:
       g_value_set_boolean (value, priv->search_mode_enabled);
       break;
+    case PROP_RINGING:
+      g_value_set_boolean (value, priv->ringing);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -198,6 +200,9 @@ kgx_pages_set_property (GObject      *object,
     case PROP_SEARCH_MODE_ENABLED:
       priv->search_mode_enabled = g_value_get_boolean (value);
       break;
+    case PROP_RINGING:
+      priv->ringing = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -205,16 +210,15 @@ kgx_pages_set_property (GObject      *object,
 }
 
 
-static gboolean
-size_timeout (KgxPages *self)
+static void
+size_timeout (gpointer data)
 {
+  KgxPages *self = data;
   KgxPagesPrivate *priv = kgx_pages_get_instance_private (self);
 
   priv->timeout = 0;
 
   gtk_revealer_set_reveal_child (GTK_REVEALER (priv->status_revealer), FALSE);
-
-  return G_SOURCE_REMOVE;
 }
 
 
@@ -243,13 +247,12 @@ size_changed (KgxTab   *tab,
   }
 
   g_clear_handle_id (&priv->timeout, g_source_remove);
-  priv->timeout = g_timeout_add (800, G_SOURCE_FUNC (size_timeout), self);
+  priv->timeout = g_timeout_add_once (800, size_timeout, self);
   g_source_set_name_by_id (priv->timeout, "[kgx] resize label timeout");
 
   label = g_strdup_printf ("%i × %i", cols, rows);
 
-  gtk_label_set_label (GTK_LABEL (priv->status), label);
-  gtk_widget_show (priv->status_revealer);
+  gtk_label_set_label (GTK_LABEL (priv->status_message), label);
   gtk_revealer_set_reveal_child (GTK_REVEALER (priv->status_revealer), TRUE);
 }
 
@@ -319,13 +322,18 @@ page_detached (AdwTabView *view,
                int         position,
                KgxPages   *self)
 {
-  KgxPagesPrivate *priv;
+  KgxTab *tab;
 
   g_return_if_fail (ADW_IS_TAB_PAGE (page));
 
-  priv = kgx_pages_get_instance_private (self);
+  tab = KGX_TAB (adw_tab_page_get_child (page));
 
-  if (adw_tab_view_get_n_pages (ADW_TAB_VIEW (priv->view)) == 0) {
+  g_object_disconnect (tab,
+                       "any-signal::died", G_CALLBACK (died), self,
+                       "any-signal::zoom", G_CALLBACK (zoom), self,
+                       NULL);
+
+  if (adw_tab_view_get_n_pages (ADW_TAB_VIEW (view)) == 0) {
     g_signal_emit (self, signals[MAYBE_CLOSE_WINDOW], 0);
   }
 }
@@ -382,7 +390,7 @@ close_page (AdwTabView *view,
 
   g_signal_connect_swapped (dlg, "response", G_CALLBACK (close_response), page);
 
-  gtk_widget_show (dlg);
+  gtk_window_present (GTK_WINDOW (dlg));
 
   return TRUE; // Block the close
 }
@@ -399,13 +407,29 @@ setup_menu (AdwTabView *view,
 }
 
 
-static void
-check_revealer (GtkRevealer *revealer,
-                GParamSpec  *pspec,
-                KgxPages    *self)
+static gboolean
+title_to_title (GBinding     *binding,
+                const GValue *from_value,
+                GValue       *to_value,
+                gpointer      user_data)
 {
-  if (!gtk_revealer_get_child_revealed (revealer))
-    gtk_widget_hide (GTK_WIDGET (revealer));
+  KgxTab *tab = KGX_TAB (user_data);
+  g_autofree char *title = g_value_dup_string (from_value);
+
+  if (G_UNLIKELY (!title)) {
+    /* Translators: %i is, from the users perspective, a random number.
+     * this string will only be seen when the running program has
+     * failed to set a title, and exists purely to avoid blank tabs
+     */
+    g_autofree char *placeholder = g_strdup_printf (_("Tab %i"),
+                                                    kgx_tab_get_id (tab));
+
+    g_set_str (&title, placeholder);
+  }
+
+  g_value_take_string (to_value, g_steal_pointer (&title));
+
+  return TRUE;
 }
 
 
@@ -447,6 +471,22 @@ path_to_keyword (GBinding     *binding,
 
 
 static gboolean
+ringing_to_icon (GBinding     *binding,
+                 const GValue *from_value,
+                 GValue       *to_value,
+                 gpointer      user_data)
+{
+  if (g_value_get_boolean (from_value)) {
+    g_value_take_object (to_value, g_themed_icon_new ("bell-outline"));
+  } else {
+    g_value_set_object (to_value, NULL);
+  }
+
+  return TRUE;
+}
+
+
+static gboolean
 object_accumulator (GSignalInvocationHint *ihint,
                     GValue                *return_value,
                     const GValue          *signal_value,
@@ -463,7 +503,7 @@ object_accumulator (GSignalInvocationHint *ihint,
 static void
 kgx_pages_class_init (KgxPagesClass *klass)
 {
-  GObjectClass   *object_class = G_OBJECT_CLASS (klass);
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
 
   object_class->dispose = kgx_pages_dispose;
@@ -483,9 +523,9 @@ kgx_pages_class_init (KgxPagesClass *klass)
    * Stability: Private
    */
   pspecs[PROP_TAB_VIEW] =
-    g_param_spec_object ("tab-view", "Tab View", "The tab view",
+    g_param_spec_object ("tab-view", NULL, NULL,
                          ADW_TYPE_TAB_VIEW,
-                         G_PARAM_READABLE);
+                         G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
   /**
    * KgxPages:tab-count:
@@ -495,11 +535,11 @@ kgx_pages_class_init (KgxPagesClass *klass)
    * Stability: Private
    */
   pspecs[PROP_TAB_COUNT] =
-    g_param_spec_uint ("tab-count", "Page Count", "Number of pages",
+    g_param_spec_uint ("tab-count", NULL, NULL,
                        0,
                        G_MAXUINT32,
                        0,
-                       G_PARAM_READABLE);
+                       G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
   /**
    * KgxPages:title:
@@ -512,9 +552,9 @@ kgx_pages_class_init (KgxPagesClass *klass)
    * Stability: Private
    */
   pspecs[PROP_TITLE] =
-    g_param_spec_string ("title", "Title", "The title of the active page",
+    g_param_spec_string ("title", NULL, NULL,
                          NULL,
-                         G_PARAM_READWRITE);
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   /**
    * KgxPages:path:
@@ -527,9 +567,9 @@ kgx_pages_class_init (KgxPagesClass *klass)
    * Stability: Private
    */
   pspecs[PROP_PATH] =
-    g_param_spec_object ("path", "Path", "The path of the active page",
+    g_param_spec_object ("path", NULL, NULL,
                          G_TYPE_FILE,
-                         G_PARAM_READWRITE);
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   /**
    * KgxPages:active-page:
@@ -545,21 +585,26 @@ kgx_pages_class_init (KgxPagesClass *klass)
                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   pspecs[PROP_IS_ACTIVE] =
-    g_param_spec_boolean ("is-active", "Is Active", "Is active pages",
+    g_param_spec_boolean ("is-active", NULL, NULL,
                           FALSE,
-                          G_PARAM_READWRITE);
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   pspecs[PROP_STATUS] =
-    g_param_spec_flags ("status", "Status", "Active page status",
+    g_param_spec_flags ("status", NULL, NULL,
                         KGX_TYPE_STATUS,
                         KGX_NONE,
-                        G_PARAM_READWRITE);
+                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   pspecs[PROP_SEARCH_MODE_ENABLED] =
-    g_param_spec_boolean ("search-mode-enabled", "Search mode enabled",
-                          "Whether the search mode is enabled for active page",
+    g_param_spec_boolean ("search-mode-enabled", NULL, NULL,
                           FALSE,
-                          G_PARAM_READWRITE);
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  pspecs[PROP_RINGING] =
+    g_param_spec_boolean ("ringing", NULL, NULL,
+                          FALSE,
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
 
   g_object_class_install_properties (object_class, LAST_PROP, pspecs);
 
@@ -571,6 +616,9 @@ kgx_pages_class_init (KgxPagesClass *klass)
                                 G_TYPE_NONE,
                                 1,
                                 KGX_TYPE_ZOOM);
+  g_signal_set_va_marshaller (signals[ZOOM],
+                              G_TYPE_FROM_CLASS (klass),
+                              kgx_marshals_VOID__ENUMv);
 
   signals[CREATE_TEAROFF_HOST] = g_signal_new ("create-tearoff-host",
                                                G_TYPE_FROM_CLASS (klass),
@@ -580,6 +628,9 @@ kgx_pages_class_init (KgxPagesClass *klass)
                                                kgx_marshals_OBJECT__VOID,
                                                KGX_TYPE_PAGES,
                                                0);
+  g_signal_set_va_marshaller (signals[CREATE_TEAROFF_HOST],
+                              G_TYPE_FROM_CLASS (klass),
+                              kgx_marshals_OBJECT__VOIDv);
 
   signals[MAYBE_CLOSE_WINDOW] = g_signal_new ("maybe-close-window",
                                               G_TYPE_FROM_CLASS (klass),
@@ -589,12 +640,15 @@ kgx_pages_class_init (KgxPagesClass *klass)
                                               kgx_marshals_VOID__VOID,
                                               G_TYPE_NONE,
                                               0);
+  g_signal_set_va_marshaller (signals[MAYBE_CLOSE_WINDOW],
+                              G_TYPE_FROM_CLASS (klass),
+                              kgx_marshals_VOID__VOIDv);
 
   gtk_widget_class_set_template_from_resource (widget_class,
                                                KGX_APPLICATION_PATH "kgx-pages.ui");
 
   gtk_widget_class_bind_template_child_private (widget_class, KgxPages, view);
-  gtk_widget_class_bind_template_child_private (widget_class, KgxPages, status);
+  gtk_widget_class_bind_template_child_private (widget_class, KgxPages, status_message);
   gtk_widget_class_bind_template_child_private (widget_class, KgxPages, status_revealer);
   gtk_widget_class_bind_template_child_private (widget_class, KgxPages, active_page_signals);
   gtk_widget_class_bind_template_child_private (widget_class, KgxPages, active_page_binds);
@@ -605,7 +659,6 @@ kgx_pages_class_init (KgxPagesClass *klass)
   gtk_widget_class_bind_template_callback (widget_class, create_window);
   gtk_widget_class_bind_template_callback (widget_class, close_page);
   gtk_widget_class_bind_template_callback (widget_class, setup_menu);
-  gtk_widget_class_bind_template_callback (widget_class, check_revealer);
 
   gtk_widget_class_set_css_name (widget_class, "pages");
 }
@@ -646,8 +699,6 @@ kgx_pages_init (KgxPages *self)
   adw_tab_view_remove_shortcuts (ADW_TAB_VIEW (priv->view),
                                  ADW_TAB_VIEW_SHORTCUT_CONTROL_HOME |
                                  ADW_TAB_VIEW_SHORTCUT_CONTROL_END |
-                                 ADW_TAB_VIEW_SHORTCUT_CONTROL_SHIFT_PAGE_UP |
-                                 ADW_TAB_VIEW_SHORTCUT_CONTROL_SHIFT_PAGE_DOWN |
                                  ADW_TAB_VIEW_SHORTCUT_CONTROL_SHIFT_HOME |
                                  ADW_TAB_VIEW_SHORTCUT_CONTROL_SHIFT_END);
 }
@@ -667,13 +718,19 @@ kgx_pages_add_page (KgxPages *self,
   kgx_tab_set_initial_title (tab, priv->title, priv->path);
 
   page = adw_tab_view_add_page (ADW_TAB_VIEW (priv->view), GTK_WIDGET (tab), NULL);
-  g_object_bind_property (tab, "tab-title", page, "title", G_BINDING_SYNC_CREATE);
+  g_object_bind_property_full (tab, "tab-title",
+                               page, "title",
+                               G_BINDING_SYNC_CREATE,
+                               title_to_title, NULL,
+                               tab, NULL);
   g_object_bind_property (tab, "tab-tooltip", page, "tooltip", G_BINDING_SYNC_CREATE);
   g_object_bind_property (tab, "needs-attention", page, "needs-attention", G_BINDING_SYNC_CREATE);
   g_object_bind_property_full (tab, "tab-status", page, "icon", G_BINDING_SYNC_CREATE,
                                status_to_icon, NULL, NULL, NULL);
   g_object_bind_property_full (tab, "tab-path", page, "keyword", G_BINDING_SYNC_CREATE,
                                path_to_keyword, NULL, NULL, NULL);
+  g_object_bind_property_full (tab, "ringing", page, "indicator-icon", G_BINDING_SYNC_CREATE,
+                               ringing_to_icon, NULL, NULL, NULL);
 }
 
 
@@ -751,6 +808,19 @@ kgx_pages_current_status (KgxPages *self)
 }
 
 
+gboolean
+kgx_pages_is_ringing (KgxPages *self)
+{
+  KgxPagesPrivate *priv;
+
+  g_return_val_if_fail (KGX_IS_PAGES (self), FALSE);
+
+  priv = kgx_pages_get_instance_private (self);
+
+  return priv->ringing;
+}
+
+
 /**
  * kgx_pages_count:
  * @self: the #KgxPages
@@ -800,12 +870,8 @@ kgx_pages_get_children (KgxPages *self)
 
     page_children = kgx_tab_get_children (KGX_TAB (adw_tab_page_get_child (page)));
 
-    for (int j = 0; j < page_children->len; j++) {
-      g_ptr_array_add (children, g_ptr_array_steal_index (page_children, j));
-    }
-
-    // 2.62: g_ptr_array_extend_and_steal (children, page_children);
-  };
+    g_ptr_array_extend_and_steal (children, g_steal_pointer (&page_children));
+  }
 
   return children;
 }

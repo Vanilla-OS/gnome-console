@@ -1,6 +1,6 @@
-/* kgx-terminal.h
+/* kgx-drop-target.h
  *
- * Copyright 2019-2023 Zander Brown
+ * Copyright 2023 Zander Brown
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,31 +18,19 @@
 
 #pragma once
 
-#include <glib-object.h>
-#include <vte/vte.h>
+#include <gtk/gtk.h>
 
 G_BEGIN_DECLS
 
-/**
- * KgxZoom:
- * @KGX_ZOOM_IN: Make text bigger
- * @KGX_ZOOM_OUT: Shrink text
- *
- * Indicates the zoom direction the zoom action was triggered for
- *
- * See #KgxTab::zoom, #KgxPages::zoom
- */
-typedef enum /*< enum,prefix=KGX >*/ {
-  KGX_ZOOM_IN = 0,  /*< nick=in >*/
-  KGX_ZOOM_OUT = 1, /*< nick=out >*/
-} KgxZoom;
+#define KGX_TYPE_DROP_TARGET (kgx_drop_target_get_type ())
+
+G_DECLARE_FINAL_TYPE (KgxDropTarget, kgx_drop_target, KGX, DROP_TARGET, GObject)
 
 
-#define KGX_TYPE_TERMINAL kgx_terminal_get_type()
+void       kgx_drop_target_extra_drop         (KgxDropTarget *self,
+                                               const GValue  *value);
+void       kgx_drop_target_mount_on           (KgxDropTarget *self,
+                                               GtkWidget     *widget);
 
-G_DECLARE_FINAL_TYPE (KgxTerminal, kgx_terminal, KGX, TERMINAL, VteTerminal)
-
-void kgx_terminal_accept_paste (KgxTerminal *self,
-                                const char  *text);
 
 G_END_DECLS

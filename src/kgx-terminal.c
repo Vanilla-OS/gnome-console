@@ -84,7 +84,8 @@ struct _KgxTerminal {
 
   KgxSettings   *settings;
   GSignalGroup  *settings_signals;
-  GBindingGroup *settings_binds;
+
+  GMenuModel    *context_model;
   GtkWidget  *popup_menu;
 
   /* Hyperlinks */
@@ -108,6 +109,7 @@ static GParamSpec *pspecs[LAST_PROP] = { NULL, };
 
 enum {
   SIZE_CHANGED,
+  ZOOM,
   N_SIGNALS
 };
 static guint signals[N_SIGNALS];
@@ -122,8 +124,6 @@ kgx_terminal_dispose (GObject *object)
   g_clear_pointer (&self->popup_menu, gtk_widget_unparent);
 
   g_clear_object (&self->settings);
-  g_clear_object (&self->settings_signals);
-  g_clear_object (&self->settings_binds);
 
   G_OBJECT_CLASS (kgx_terminal_parent_class)->dispose (object);
 }
@@ -254,18 +254,16 @@ have_url_under_pointer (KgxTerminal *self,
   g_autofree char *match = NULL;
   int match_id;
 
-  g_clear_pointer (&self->current_url, g_free);
-
   hyperlink = vte_terminal_check_hyperlink_at (VTE_TERMINAL (self), x, y);
 
   if (G_UNLIKELY (hyperlink)) {
-    self->current_url = g_steal_pointer (&hyperlink);
+    g_set_str (&self->current_url, g_steal_pointer (&hyperlink));
   } else {
     match = vte_terminal_check_match_at (VTE_TERMINAL (self), x, y, &match_id);
 
     for (int i = 0; i < KGX_TERMINAL_N_LINK_REGEX; i++) {
       if (self->match_id[i] == match_id) {
-        self->current_url = g_steal_pointer (&match);
+        g_set_str (&self->current_url, g_steal_pointer (&match));
         break;
       }
     }
@@ -302,20 +300,13 @@ context_menu (KgxTerminal *self,
               double       y,
               gboolean     touch)
 {
-  GtkApplication *app;
-  gboolean value;
-
-  value = have_url_under_pointer (self, x, y);
+  gboolean value = have_url_under_pointer (self, x, y);
 
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.open-link", value);
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.copy-link", value);
 
-  app = GTK_APPLICATION (g_application_get_default ());
-
   if (!self->popup_menu) {
-    GMenu *model = gtk_application_get_menu_by_id (app, "context-menu");
-
-    self->popup_menu = gtk_popover_menu_new_from_model (G_MENU_MODEL (model));
+    self->popup_menu = gtk_popover_menu_new_from_model (G_MENU_MODEL (self->context_model));
 
     gtk_widget_set_parent (self->popup_menu, GTK_WIDGET (self));
   }
@@ -343,18 +334,34 @@ menu_popup_activated (KgxTerminal *self)
 
 
 static void
-open_link (KgxTerminal *self, guint32 timestamp)
+open_link_cb (GtkUriLauncher *launcher,
+              GAsyncResult   *result)
 {
-  gtk_show_uri (GTK_WINDOW (gtk_widget_get_root (GTK_WIDGET (self))),
-                self->current_url,
-                timestamp);
+  g_autoptr (GError) error = NULL;
+
+  if (!gtk_uri_launcher_launch_finish (launcher, result, &error))
+    g_warning ("Couldn't open uri: %s\n", error->message);
+}
+
+
+static void
+open_link (KgxTerminal *self)
+{
+  GtkUriLauncher *launcher;
+
+  launcher = gtk_uri_launcher_new (self->current_url);
+  gtk_uri_launcher_launch (launcher,
+                           GTK_WINDOW (gtk_widget_get_root (GTK_WIDGET (self))),
+                           NULL,
+                           (GAsyncReadyCallback) open_link_cb,
+                           NULL);
 }
 
 
 static void
 open_link_activated (KgxTerminal *self)
 {
-  open_link (self, GDK_CURRENT_TIME);
+  open_link (self);
 }
 
 
@@ -554,11 +561,145 @@ kgx_terminal_direction_changed (GtkWidget        *widget,
 }
 
 
+static gboolean
+kgx_terminal_query_tooltip (GtkWidget  *widget,
+                            int         x,
+                            int         y,
+                            gboolean    keyboard_tooltip,
+                            GtkTooltip *tooltip)
+{
+  KgxTerminal *self = KGX_TERMINAL (widget);
+  g_autofree char *text = NULL;
+
+  if (!have_url_under_pointer (self, x, y)) {
+    return GTK_WIDGET_CLASS (kgx_terminal_parent_class)->query_tooltip (widget,
+                                                                        x,
+                                                                        y,
+                                                                        keyboard_tooltip,
+                                                                        tooltip);
+  }
+
+  text = g_strdup_printf (_("Ctrl-click to open:\n%s"), self->current_url);
+
+  gtk_tooltip_set_text (tooltip, text);
+
+  return TRUE;
+}
+
+
+static void
+kgx_terminal_selection_changed (VteTerminal *self)
+{
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.copy",
+                                 vte_terminal_get_has_selection (self));
+}
+
+
+static void
+kgx_terminal_increase_font_size (VteTerminal *self)
+{
+  g_signal_emit (self, signals[ZOOM], 0, KGX_ZOOM_IN);
+}
+
+
+static void
+kgx_terminal_decrease_font_size (VteTerminal *self)
+{
+  g_signal_emit (self, signals[ZOOM], 0, KGX_ZOOM_OUT);
+}
+
+
+static void
+location_changed (KgxTerminal *self)
+{
+  gboolean value;
+
+  value = vte_terminal_get_current_file_uri (VTE_TERMINAL (self)) ||
+            vte_terminal_get_current_directory_uri (VTE_TERMINAL (self));
+
+  gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.show-in-files", value);
+
+  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_PATH]);
+}
+
+
+static void
+pressed (GtkGestureClick *gesture,
+         int              n_presses,
+         double           x,
+         double           y,
+         KgxTerminal     *self)
+{
+  GdkEvent *event;
+  GdkModifierType state;
+  guint button;
+
+  if (n_presses > 1) {
+    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
+    return;
+  }
+
+  event = gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (gesture));
+
+  if (gdk_event_triggers_context_menu (event)) {
+    context_menu (self, x, y, FALSE);
+    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+
+    return;
+  }
+
+  state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
+  button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
+
+  if (have_url_under_pointer (self, x, y) &&
+      (button == GDK_BUTTON_PRIMARY || button == GDK_BUTTON_MIDDLE) &&
+      state & GDK_CONTROL_MASK) {
+
+    open_link (self);
+    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+
+    return;
+  }
+
+  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
+}
+
+
+static void
+long_pressed (GtkGestureLongPress *gesture,
+              double               x,
+              double               y,
+              KgxTerminal         *self)
+{
+  context_menu (self, x, y, TRUE);
+  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+}
+
+
+static gboolean
+scroll (GtkEventControllerScroll *scroll,
+        double                   dx,
+        double                   dy,
+        KgxTerminal              *self)
+{
+  GdkModifierType mods = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (scroll));
+
+  if ((mods & GDK_CONTROL_MASK) == 0 || dy == 0) {
+    return FALSE;
+  }
+
+  g_signal_emit (self, signals[ZOOM], 0, dy > 0 ? KGX_ZOOM_OUT : KGX_ZOOM_IN);
+
+  return TRUE;
+}
+
+
 static void
 kgx_terminal_class_init (KgxTerminalClass *klass)
 {
-  GObjectClass   *object_class = G_OBJECT_CLASS (klass);
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+  VteTerminalClass *term_class = VTE_TERMINAL_CLASS (klass);
 
   object_class->dispose = kgx_terminal_dispose;
   object_class->set_property = kgx_terminal_set_property;
@@ -566,22 +707,21 @@ kgx_terminal_class_init (KgxTerminalClass *klass)
 
   widget_class->size_allocate = kgx_terminal_size_allocate;
   widget_class->direction_changed = kgx_terminal_direction_changed;
+  widget_class->query_tooltip = kgx_terminal_query_tooltip;
+
+  term_class->selection_changed = kgx_terminal_selection_changed;
+  term_class->increase_font_size = kgx_terminal_increase_font_size;
+  term_class->decrease_font_size = kgx_terminal_decrease_font_size;
 
   pspecs[PROP_SETTINGS] =
     g_param_spec_object ("settings", NULL, NULL,
                          KGX_TYPE_SETTINGS,
                          G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS);
 
-  /**
-   * KgxTerminal:path:
-   *
-   *
-   * Stability: Private
-   */
   pspecs[PROP_PATH] =
-    g_param_spec_object ("path", "Path", "Current path",
+    g_param_spec_object ("path", NULL, NULL,
                          G_TYPE_FILE,
-                         G_PARAM_READABLE);
+                         G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, LAST_PROP, pspecs);
 
@@ -594,6 +734,32 @@ kgx_terminal_class_init (KgxTerminalClass *klass)
                                         2,
                                         G_TYPE_UINT,
                                         G_TYPE_UINT);
+  g_signal_set_va_marshaller (signals[SIZE_CHANGED],
+                              G_TYPE_FROM_CLASS (klass),
+                              kgx_marshals_VOID__UINT_UINTv);
+
+  signals[ZOOM] = g_signal_new ("zoom",
+                                G_TYPE_FROM_CLASS (klass),
+                                G_SIGNAL_RUN_LAST,
+                                0, NULL, NULL,
+                                kgx_marshals_VOID__ENUM,
+                                G_TYPE_NONE,
+                                1,
+                                KGX_TYPE_ZOOM);
+  g_signal_set_va_marshaller (signals[ZOOM],
+                              G_TYPE_FROM_CLASS (klass),
+                              kgx_marshals_VOID__ENUMv);
+
+  gtk_widget_class_set_template_from_resource (widget_class,
+                                               KGX_APPLICATION_PATH "kgx-terminal.ui");
+
+  gtk_widget_class_bind_template_child (widget_class, KgxTerminal, context_model);
+  gtk_widget_class_bind_template_child (widget_class, KgxTerminal, settings_signals);
+
+  gtk_widget_class_bind_template_callback (widget_class, location_changed);
+  gtk_widget_class_bind_template_callback (widget_class, pressed);
+  gtk_widget_class_bind_template_callback (widget_class, long_pressed);
+  gtk_widget_class_bind_template_callback (widget_class, scroll);
 
   gtk_widget_class_install_action (widget_class,
                                    "menu.popup",
@@ -664,82 +830,6 @@ paste_response (PasteData *data)
 
 
 static void
-pressed (GtkGestureClick *gesture,
-         int              n_presses,
-         double           x,
-         double           y,
-         KgxTerminal     *self)
-{
-  GdkEvent *event;
-  GdkModifierType state;
-  guint button;
-
-  if (n_presses > 1) {
-    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
-    return;
-  }
-
-  event = gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (gesture));
-
-  if (gdk_event_triggers_context_menu (event)) {
-    context_menu (self, x, y, FALSE);
-    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
-
-    return;
-  }
-
-  state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
-  button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
-
-  if (have_url_under_pointer (self, x, y) &&
-      (button == GDK_BUTTON_PRIMARY || button == GDK_BUTTON_MIDDLE) &&
-      state & GDK_CONTROL_MASK) {
-    guint32 time = gtk_event_controller_get_current_event_time (GTK_EVENT_CONTROLLER (gesture));
-
-    open_link (self, time);
-    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
-
-    return;
-  }
-
-  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
-}
-
-
-static void
-long_pressed (GtkGestureLongPress *gesture,
-              double               x,
-              double               y,
-              KgxTerminal         *self)
-{
-  context_menu (self, x, y, TRUE);
-  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
-}
-
-
-static void
-selection_changed (KgxTerminal *self)
-{
-  gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.copy",
-                                 vte_terminal_get_has_selection (VTE_TERMINAL (self)));
-}
-
-
-static void
-location_changed (KgxTerminal *self)
-{
-  gboolean value;
-
-  value = vte_terminal_get_current_file_uri (VTE_TERMINAL (self)) ||
-            vte_terminal_get_current_directory_uri (VTE_TERMINAL (self));
-
-  gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.show-in-files", value);
-
-  g_object_notify_by_pspec (G_OBJECT (self), pspecs[PROP_PATH]);
-}
-
-
-static void
 dark_changed (KgxTerminal *self)
 {
   KgxTheme theme;
@@ -755,31 +845,7 @@ dark_changed (KgxTerminal *self)
 static void
 kgx_terminal_init (KgxTerminal *self)
 {
-  GtkGesture *gesture;
-  GtkEventController *controller;
-  GtkShortcut *shortcut;
-
-  gesture = gtk_gesture_click_new ();
-  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), 0);
-  g_signal_connect (gesture, "pressed", G_CALLBACK (pressed), self);
-  gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (gesture));
-
-  gesture = gtk_gesture_long_press_new ();
-  gtk_gesture_single_set_touch_only (GTK_GESTURE_SINGLE (gesture), TRUE);
-  g_signal_connect (gesture, "pressed", G_CALLBACK (long_pressed), self);
-  gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (gesture));
-
-  controller = gtk_shortcut_controller_new ();
-  gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
-  gtk_widget_add_controller (GTK_WIDGET (self), controller);
-
-  shortcut = gtk_shortcut_new (gtk_keyval_trigger_new (GDK_KEY_C, GDK_CONTROL_MASK | GDK_SHIFT_MASK),
-                               gtk_named_action_new ("term.copy"));
-  gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
-
-  shortcut = gtk_shortcut_new (gtk_keyval_trigger_new (GDK_KEY_V, GDK_CONTROL_MASK | GDK_SHIFT_MASK),
-                               gtk_named_action_new ("term.paste"));
-  gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+  gtk_widget_init_template (GTK_WIDGET (self));
 
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.open-link", FALSE);
   gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.copy-link", FALSE);
@@ -788,16 +854,6 @@ kgx_terminal_init (KgxTerminal *self)
 
   vte_terminal_set_mouse_autohide (VTE_TERMINAL (self), TRUE);
   vte_terminal_search_set_wrap_around (VTE_TERMINAL (self), TRUE);
-  vte_terminal_set_allow_hyperlink (VTE_TERMINAL (self), TRUE);
-  vte_terminal_set_enable_fallback_scrolling (VTE_TERMINAL (self), FALSE);
-  vte_terminal_set_scroll_unit_is_pixels (VTE_TERMINAL (self), TRUE);
-
-  g_signal_connect (self, "selection-changed",
-                    G_CALLBACK (selection_changed), NULL);
-  g_signal_connect (self, "current-directory-uri-changed",
-                    G_CALLBACK (location_changed), NULL);
-  g_signal_connect (self, "current-file-uri-changed",
-                    G_CALLBACK (location_changed), NULL);
 
   for (int i = 0; i < KGX_TERMINAL_N_LINK_REGEX; i++) {
     g_autoptr (VteRegex) regex = NULL;
@@ -823,27 +879,9 @@ kgx_terminal_init (KgxTerminal *self)
                            "notify::dark", G_CALLBACK (dark_changed),
                            self, G_CONNECT_SWAPPED);
 
-  self->settings_signals = g_signal_group_new (KGX_TYPE_SETTINGS);
-  g_object_bind_property (self, "settings",
-                          self->settings_signals, "target",
-                          G_BINDING_DEFAULT);
   g_signal_group_connect_swapped (self->settings_signals,
                                   "notify::theme", G_CALLBACK (update_terminal_colours),
                                   self);
-
-  self->settings_binds = g_binding_group_new ();
-  g_object_bind_property (self, "settings",
-                          self->settings_binds, "source",
-                          G_BINDING_DEFAULT);
-  g_binding_group_bind (self->settings_binds, "font",
-                        self, "font-desc",
-                        G_BINDING_SYNC_CREATE);
-  g_binding_group_bind (self->settings_binds, "font-scale",
-                        self, "font-scale",
-                        G_BINDING_SYNC_CREATE);
-  g_binding_group_bind (self->settings_binds, "scrollback-lines",
-                        self, "scrollback-lines",
-                        G_BINDING_SYNC_CREATE);
 }
 
 
@@ -862,7 +900,7 @@ kgx_terminal_accept_paste (KgxTerminal *self,
   len = strlen (text);
 
   g_set_weak_pointer (&paste->dest, self);
-  paste->text = g_strdup (text);
+  g_set_str (&paste->text, text);
 
   if (g_strstr_len (striped, len, "sudo") != NULL &&
       g_strstr_len (striped, len, "\n") != NULL) {
@@ -886,7 +924,7 @@ kgx_terminal_accept_paste (KgxTerminal *self,
                               G_CALLBACK (paste_response),
                               g_steal_pointer (&paste));
 
-    gtk_widget_show (dlg);
+    gtk_window_present (GTK_WINDOW (dlg));
   } else {
     paste_response (g_steal_pointer (&paste));
   }

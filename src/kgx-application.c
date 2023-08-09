@@ -38,6 +38,7 @@
 #include "kgx-application.h"
 #include "kgx-window.h"
 #include "kgx-pages.h"
+#include "kgx-drop-target.h"
 #include "kgx-simple-tab.h"
 #include "kgx-resources.h"
 #include "kgx-watcher.h"
@@ -45,18 +46,27 @@
 #define LOGO_COL_SIZE 28
 #define LOGO_ROW_SIZE 14
 
+
+struct _KgxApplication {
+  AdwApplication            parent_instance;
+
+  GTree                    *pages;
+  KgxSettings              *settings;
+};
+
+
 G_DEFINE_TYPE (KgxApplication, kgx_application, ADW_TYPE_APPLICATION)
 
 
 static void
-kgx_application_finalize (GObject *object)
+kgx_application_dispose (GObject *object)
 {
   KgxApplication *self = KGX_APPLICATION (object);
 
   g_clear_object (&self->settings);
   g_clear_pointer (&self->pages, g_tree_unref);
 
-  G_OBJECT_CLASS (kgx_application_parent_class)->finalize (object);
+  G_OBJECT_CLASS (kgx_application_parent_class)->dispose (object);
 }
 
 
@@ -103,6 +113,7 @@ kgx_application_startup (GApplication *app)
 
   g_type_ensure (KGX_TYPE_TERMINAL);
   g_type_ensure (KGX_TYPE_PAGES);
+  g_type_ensure (KGX_TYPE_DROP_TARGET);
 
   G_APPLICATION_CLASS (kgx_application_parent_class)->startup (app);
 
@@ -361,7 +372,7 @@ kgx_application_handle_local_options (GApplication *app,
       }
 
       print_logo (w.ws_col);
-      print_center (_("King’s Cross"), -1, w.ws_col);
+      print_center ("KGX", -1, w.ws_col);
       print_center (PACKAGE_VERSION, -1, w.ws_col);
       print_center (_("Terminal Emulator"), -1, w.ws_col);
       print_center (copyright, -1, w.ws_col);
@@ -385,7 +396,7 @@ kgx_application_class_init (KgxApplicationClass *klass)
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
   GApplicationClass *app_class = G_APPLICATION_CLASS (klass);
 
-  object_class->finalize = kgx_application_finalize;
+  object_class->dispose = kgx_application_dispose;
 
   app_class->activate = kgx_application_activate;
   app_class->startup = kgx_application_startup;
@@ -754,8 +765,7 @@ kgx_application_add_terminal (KgxApplication *self,
   g_autofree char *directory = NULL;
   g_auto (GStrv) shell = NULL;
   GtkWindow *window;
-  GtkWidget *tab;
-  KgxPages *pages;
+  KgxTab *tab;
 
   if (G_LIKELY (argv == NULL)) {
     shell = kgx_settings_get_shell (self->settings);
@@ -775,7 +785,7 @@ kgx_application_add_terminal (KgxApplication *self,
                       "tab-title", title,
                       "close-on-quit", argv == NULL,
                       NULL);
-  kgx_tab_start (KGX_TAB (tab), started, self);
+  kgx_tab_start (tab, started, self);
 
   if (existing_window) {
     window = GTK_WINDOW (existing_window);
@@ -783,14 +793,16 @@ kgx_application_add_terminal (KgxApplication *self,
     GtkWindow *active_window;
     int width = -1, height = -1;
 
-    kgx_settings_get_size (self->settings, &width, &height);
-
-    active_window = gtk_application_get_active_window (GTK_APPLICATION (self));
-    if (active_window) {
-      gtk_window_get_default_size (active_window, &width, &height);
+    if (kgx_settings_get_restore_size (self->settings)) {
+      active_window = gtk_application_get_active_window (GTK_APPLICATION (self));
+      if (active_window) {
+        gtk_window_get_default_size (active_window, &width, &height);
+      } else {
+        kgx_settings_get_size (self->settings, &width, &height);
+      }
     }
 
-    g_debug ("new window (%i×%i)", width, height);
+    g_debug ("app: new window (%i×%i)", width, height);
 
     window = g_object_new (KGX_TYPE_WINDOW,
                            "application", self,
@@ -800,10 +812,7 @@ kgx_application_add_terminal (KgxApplication *self,
                            NULL);
   }
 
-  pages = kgx_window_get_pages (KGX_WINDOW (window));
-
-  kgx_pages_add_page (pages, KGX_TAB (tab));
-  kgx_pages_focus_page (pages, KGX_TAB (tab));
+  kgx_window_add_tab (KGX_WINDOW (window), tab);
 
   gtk_window_present_with_time (window, timestamp);
 
