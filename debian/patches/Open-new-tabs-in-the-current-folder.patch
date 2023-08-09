@@ -36,17 +36,17 @@ https://gitlab.gnome.org/GNOME/console/-/merge_requests/99
  src/kgx-pages.c      | 21 +++++++++++++++
  src/kgx-pages.h      |  2 ++
  src/kgx-simple-tab.c | 13 ++++++++++
- src/kgx-simple-tab.h |  2 +-
+ src/kgx-simple-tab.h |  1 +
  src/kgx-terminal.c   | 73 ++++++++++++++++++++++++++++++++++++++++++++++++++++
  src/kgx-terminal.h   |  3 +++
- src/kgx-window.c     |  6 ++++-
- 7 files changed, 118 insertions(+), 2 deletions(-)
+ src/kgx-window.c     |  7 ++++-
+ 7 files changed, 119 insertions(+), 1 deletion(-)
 
 diff --git a/src/kgx-pages.c b/src/kgx-pages.c
-index 6b146aa..9565558 100644
+index ee6d868..53fe5be 100644
 --- a/src/kgx-pages.c
 +++ b/src/kgx-pages.c
-@@ -32,6 +32,7 @@
+@@ -24,6 +24,7 @@
  #include "kgx-pages.h"
  #include "kgx-tab.h"
  #include "kgx-settings.h"
@@ -54,7 +54,7 @@ index 6b146aa..9565558 100644
  #include "kgx-marshals.h"
  
  
-@@ -866,3 +867,23 @@ kgx_pages_get_selected_page (KgxPages  *self)
+@@ -932,3 +933,23 @@ kgx_pages_get_selected_page (KgxPages  *self)
  
    return adw_tab_view_get_selected_page (ADW_TAB_VIEW (priv->view));
  }
@@ -79,10 +79,10 @@ index 6b146aa..9565558 100644
 +  return kgx_simple_tab_get_current_path (KGX_SIMPLE_TAB (tab));
 +}
 diff --git a/src/kgx-pages.h b/src/kgx-pages.h
-index f8c1b13..d87790c 100644
+index 05a8afe..4eb5aee 100644
 --- a/src/kgx-pages.h
 +++ b/src/kgx-pages.h
-@@ -55,4 +55,6 @@ void        kgx_pages_close_page          (KgxPages  *self);
+@@ -51,4 +51,6 @@ void        kgx_pages_close_page          (KgxPages  *self);
  void        kgx_pages_detach_page         (KgxPages  *self);
  AdwTabPage *kgx_pages_get_selected_page   (KgxPages  *self);
  
@@ -90,10 +90,10 @@ index f8c1b13..d87790c 100644
 +
  G_END_DECLS
 diff --git a/src/kgx-simple-tab.c b/src/kgx-simple-tab.c
-index 42b8389..c908bd1 100644
+index aca596c..d90c577 100644
 --- a/src/kgx-simple-tab.c
 +++ b/src/kgx-simple-tab.c
-@@ -221,6 +221,7 @@ spawned (VtePty       *pty,
+@@ -233,6 +233,7 @@ spawned (VtePty       *pty,
    }
  
    wait_data = g_new0 (WaitData, 1);
@@ -101,7 +101,7 @@ index 42b8389..c908bd1 100644
    g_set_weak_pointer (&wait_data->self, start_data->self);
  
    g_child_watch_add (pid, wait_cb, g_steal_pointer (&wait_data));
-@@ -362,3 +363,15 @@ kgx_simple_tab_init (KgxSimpleTab *self)
+@@ -374,3 +375,15 @@ kgx_simple_tab_init (KgxSimpleTab *self)
  {
    gtk_widget_init_template (GTK_WIDGET (self));
  }
@@ -118,19 +118,18 @@ index 42b8389..c908bd1 100644
 +  return current_path;
 +}
 diff --git a/src/kgx-simple-tab.h b/src/kgx-simple-tab.h
-index 4c82052..50968d6 100644
+index b4dac7c..9b909ce 100644
 --- a/src/kgx-simple-tab.h
 +++ b/src/kgx-simple-tab.h
-@@ -53,6 +53,6 @@ struct _KgxSimpleTab
- };
+@@ -26,5 +26,6 @@ G_BEGIN_DECLS
  
  G_DECLARE_FINAL_TYPE (KgxSimpleTab, kgx_simple_tab, KGX, SIMPLE_TAB, KgxTab)
--
+ 
 +GFile *kgx_simple_tab_get_current_path (KgxSimpleTab *self);
  
  G_END_DECLS
 diff --git a/src/kgx-terminal.c b/src/kgx-terminal.c
-index b9ff115..a593407 100644
+index 9056ad8..233abb1 100644
 --- a/src/kgx-terminal.c
 +++ b/src/kgx-terminal.c
 @@ -32,6 +32,7 @@
@@ -141,7 +140,7 @@ index b9ff115..a593407 100644
  
  #include "rgba.h"
  #include "xdg-fm1.h"
-@@ -92,6 +93,8 @@ struct _KgxTerminal {
+@@ -93,6 +94,8 @@ struct _KgxTerminal {
    int         match_id[KGX_TERMINAL_N_LINK_REGEX];
  
    gboolean    popup_is_touch;
@@ -229,17 +228,17 @@ index b9ff115..a593407 100644
        }
        g_value_set_object (value, path);
        break;
-@@ -759,6 +820,9 @@ kgx_terminal_init (KgxTerminal *self)
-   GtkEventController *controller;
-   GtkShortcut *shortcut;
+@@ -847,6 +908,9 @@ kgx_terminal_init (KgxTerminal *self)
+ {
+   gtk_widget_init_template (GTK_WIDGET (self));
  
 +  self->pid = -1;
 +  self->pid_monitor = NULL;
 +
-   gesture = gtk_gesture_click_new ();
-   gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), 0);
-   g_signal_connect (gesture, "pressed", G_CALLBACK (pressed), self);
-@@ -847,6 +911,15 @@ kgx_terminal_init (KgxTerminal *self)
+   gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.open-link", FALSE);
+   gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.copy-link", FALSE);
+   gtk_widget_action_set_enabled (GTK_WIDGET (self), "term.copy", FALSE);
+@@ -885,6 +949,15 @@ kgx_terminal_init (KgxTerminal *self)
  }
  
  
@@ -256,10 +255,10 @@ index b9ff115..a593407 100644
  kgx_terminal_accept_paste (KgxTerminal *self,
                             const char  *text)
 diff --git a/src/kgx-terminal.h b/src/kgx-terminal.h
-index be56ec7..818ebdd 100644
+index 406b041..427f8bc 100644
 --- a/src/kgx-terminal.h
 +++ b/src/kgx-terminal.h
-@@ -30,4 +30,7 @@ G_DECLARE_FINAL_TYPE (KgxTerminal, kgx_terminal, KGX, TERMINAL, VteTerminal)
+@@ -45,4 +45,7 @@ G_DECLARE_FINAL_TYPE (KgxTerminal, kgx_terminal, KGX, TERMINAL, VteTerminal)
  void kgx_terminal_accept_paste (KgxTerminal *self,
                                  const char  *text);
  
@@ -268,21 +267,24 @@ index be56ec7..818ebdd 100644
 +
  G_END_DECLS
 diff --git a/src/kgx-window.c b/src/kgx-window.c
-index 20edee1..36e9b98 100644
+index 15919fa..8203a6d 100644
 --- a/src/kgx-window.c
 +++ b/src/kgx-window.c
-@@ -628,10 +628,14 @@ GFile *
- kgx_window_get_working_dir (KgxWindow *self)
+@@ -639,12 +639,17 @@ kgx_window_get_working_dir (KgxWindow *self)
  {
+   KgxWindowPrivate *priv;
    GFile *file = NULL;
 +  g_autofree const char *current_path = NULL;
  
    g_return_val_if_fail (KGX_IS_WINDOW (self), NULL);
  
--  g_object_get (self->pages, "path", &file, NULL);
-+  file = kgx_pages_get_current_path (KGX_PAGES (self->pages));
+   priv = kgx_window_get_instance_private (self);
+ 
+-  g_object_get (priv->pages, "path", &file, NULL);
++  file = kgx_pages_get_current_path (KGX_PAGES (priv->pages));
++
 +  if (file == NULL) {
-+    g_object_get (self->pages, "path", &file, NULL);
++    g_object_get (priv->pages, "path", &file, NULL);
 +  }
  
    return file;
