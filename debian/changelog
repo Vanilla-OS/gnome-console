@@ -1,8 +1,10 @@
-gnome-console (45~beta-1) UNRELEASED; urgency=medium
+gnome-console (45~beta-1) experimental; urgency=medium
 
   * New upstream release
+  * debian/control.in: Bump minimum GTK4, glib, and libadwaita
+  * Add patch to set background to purple on Ubuntu (LP: #1977769)
 
- -- Jeremy Bícha <jbicha@ubuntu.com>  Wed, 09 Aug 2023 14:43:43 -0400
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Tue, 15 Aug 2023 22:56:59 -0400
 
 gnome-console (44.0-2) unstable; urgency=medium
 
