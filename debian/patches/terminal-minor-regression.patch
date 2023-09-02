@@ -1,0 +1,25 @@
+From: Zander Brown <zbrown@gnome.org>
+Date: Thu, 17 Aug 2023 01:29:18 +0100
+Subject: terminal: minor regression
+
+An embarrassing mistake with a simple fix
+
+Fix: https://gitlab.gnome.org/GNOME/console/-/issues/314
+(cherry picked from commit 4d0f6b5ae84a804b112c3cbb36d1eefc4b64ca86)
+---
+ src/kgx-terminal.ui | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/kgx-terminal.ui b/src/kgx-terminal.ui
+index 4f554a7..5c6bdc3 100644
+--- a/src/kgx-terminal.ui
++++ b/src/kgx-terminal.ui
+@@ -41,7 +41,7 @@
+   </menu>
+   <template class="KgxTerminal" parent="VteTerminal">
+     <property name="allow-hyperlink">True</property>
+-    <property name="enable-fallback-scrolling">True</property>
++    <property name="enable-fallback-scrolling">False</property>
+     <property name="has-tooltip">True</property>
+     <property name="scroll-unit-is-pixels">True</property>
+     <binding name="font-desc">
