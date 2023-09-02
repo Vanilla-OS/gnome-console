@@ -1,3 +1,11 @@
+gnome-console (45~beta-2) unstable; urgency=medium
+
+  * Cherry-pick patch to fix Open/Copy Link showing too often
+  * Cherry-pick another regression fix
+  * Release to unstable
+
+ -- Jeremy Bícha <jbicha@ubuntu.com>  Sat, 02 Sep 2023 19:20:06 -0400
+
 gnome-console (45~beta-1) experimental; urgency=medium
 
   * New upstream release
