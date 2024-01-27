@@ -36,7 +36,10 @@ jobs:
           libgtop2-dev \
           libgtk-4-dev \
           libpcre2-dev \
-          libvte-2.91-gtk4-dev
+          libvte-2.91-gtk4-dev \
+          desktop-file-utils \
+          meson \
+          appstream-util
 
     - name: Build debian package
       run: |
