@@ -1,0 +1,24 @@
+diff --git a/src/kgx-close-dialog.c b/src/kgx-close-dialog.c
+index 0956373..5dd8436 100644
+--- a/src/kgx-close-dialog.c
++++ b/src/kgx-close-dialog.c
+@@ -64,9 +64,18 @@ kgx_close_dialog_new (KgxCloseDialogContext  context,
+   for (int i = 0; i < commands->len; i++) {
+     KgxProcess *process = g_ptr_array_index (commands, i);
+     GtkWidget *row;
++    char *cmd;
++    cmd = kgx_process_get_exec (process);
++
++    if (strlen(cmd) > 170) {
++      cmd[167] = '.';
++      cmd[168] = '.';
++      cmd[169] = '.';
++      cmd[170] = '\0';
++    }
+ 
+     row = g_object_new (ADW_TYPE_ACTION_ROW,
+-                        "title", kgx_process_get_exec (process),
++                        "title", cmd,
+                         NULL);
+ 
+     gtk_list_box_append (GTK_LIST_BOX (list), row);
