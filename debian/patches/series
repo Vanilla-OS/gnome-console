@@ -2,4 +2,4 @@ Open-new-tabs-in-the-current-folder.patch
 background-set-Ubuntu-purple.patch
 terminal-have_url_under_pointer-should-be-TRUE-when-activ.patch
 terminal-minor-regression.patch
-vanilla-ellipsize-exit-confirm.patch
+vanilla-ellipses-exit-confirm.patch

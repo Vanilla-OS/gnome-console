@@ -1,4 +1,4 @@
-gnome-console (45~beta-2) unstable; urgency=medium
+gnome-console (45~99-orchid-beta-2) unstable; urgency=medium
 
   * Cherry-pick patch to fix Open/Copy Link showing too often
   * Cherry-pick another regression fix
