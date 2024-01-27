@@ -54,3 +54,4 @@ jobs:
         files: |
           /__w/gnome-console/gnome-console_45~99-orchid-beta-2_amd64.deb
           /__w/gnome-console/gnome-console.tar.xz
+          
